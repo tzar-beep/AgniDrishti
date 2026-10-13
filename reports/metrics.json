@@ -1,0 +1,50 @@
+{
+  "logreg": {
+    "val": {
+      "pr_auc": 0.6699,
+      "roc_auc": 0.8861,
+      "brier": 0.1424,
+      "positive_rate": 0.2438,
+      "n": 8216
+    },
+    "test": {
+      "pr_auc": 0.7747,
+      "roc_auc": 0.9106,
+      "brier": 0.1293,
+      "positive_rate": 0.3006,
+      "n": 4108
+    }
+  },
+  "xgboost": {
+    "val": {
+      "pr_auc": 0.7622,
+      "roc_auc": 0.9148,
+      "brier": 0.1167,
+      "positive_rate": 0.2438,
+      "n": 8216
+    },
+    "test": {
+      "pr_auc": 0.8553,
+      "roc_auc": 0.9376,
+      "brier": 0.1048,
+      "positive_rate": 0.3006,
+      "n": 4108
+    }
+  },
+  "persistence": {
+    "val": {
+      "pr_auc": 0.4779,
+      "roc_auc": 0.801,
+      "brier": 0.2321,
+      "positive_rate": 0.2438,
+      "n": 8216
+    },
+    "test": {
+      "pr_auc": 0.5659,
+      "roc_auc": 0.8204,
+      "brier": 0.2157,
+      "positive_rate": 0.3006,
+      "n": 4108
+    }
+  }
+}

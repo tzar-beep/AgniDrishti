@@ -84,7 +84,7 @@ def fetch_recent_fires(key: str, start: date, end: date, issue: date) -> pd.Data
     firms.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     with ThreadPoolExecutor(max_workers=firms.WORKERS) as pool:
         frames = list(pool.map(lambda j: firms.fetch_chunk(key, j[0], j[1], j[2]), jobs))
-    raw = pd.concat(frames, ignore_index=True)
+    raw = pd.concat([f for f in frames if not f.empty] or frames[:1], ignore_index=True)
     raw["acq_date"] = pd.to_datetime(raw["acq_date"])
     raw = raw[(raw["acq_date"].dt.date >= start) & (raw["acq_date"].dt.date <= end)]
     return firms.clean(raw)

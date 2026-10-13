@@ -35,6 +35,13 @@ PARAM_GRID = {
     "n_estimators": [200, 400],
     "min_child_weight": [1, 5],
 }
+# Physically motivated monotone constraints (+1: risk never decreases as the feature grows,
+# -1: never increases). Fire history, terrain and season are left unconstrained.
+MONOTONE = {
+    "tmax_mean_7d": 1, "tmax_mean_14d": 1, "wind_mean_7d": 1, "wind_mean_14d": 1,
+    "rh_mean_7d": -1, "rh_mean_14d": -1, "precip_mean_7d": -1, "precip_mean_14d": -1,
+    "days_since_rain": 1, "fwi_7d": 1,
+}
 
 
 def split_by_time(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -57,7 +64,9 @@ def train_logreg(train: pd.DataFrame) -> object:
     return model.fit(train[FEATURES], train["y"])
 
 
-def tune_xgb(train: pd.DataFrame, val: pd.DataFrame) -> tuple[XGBClassifier, dict, float]:
+def tune_xgb(
+    train: pd.DataFrame, val: pd.DataFrame, monotone: bool = True
+) -> tuple[XGBClassifier, dict, float]:
     """Grid-search XGBoost on validation PR-AUC; returns (model, params, val_pr_auc)."""
     spw = float((train["y"] == 0).sum() / max((train["y"] == 1).sum(), 1))
     best: tuple[XGBClassifier | None, dict, float] = (None, {}, -1.0)
@@ -65,6 +74,9 @@ def tune_xgb(train: pd.DataFrame, val: pd.DataFrame) -> tuple[XGBClassifier, dic
         params = dict(zip(PARAM_GRID, values, strict=True))
         params |= {"scale_pos_weight": round(spw, 3), "subsample": 0.8,
                    "colsample_bytree": 0.8, "eval_metric": "aucpr", "random_state": 42}
+        if monotone:
+            signs = ",".join(str(MONOTONE.get(f, 0)) for f in FEATURES)
+            params["monotone_constraints"] = f"({signs})"
         model = XGBClassifier(**params, n_jobs=-1)
         model.fit(train[FEATURES], train["y"])
         score = average_precision_score(val["y"], model.predict_proba(val[FEATURES])[:, 1])

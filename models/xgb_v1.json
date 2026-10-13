@@ -1,0 +1,105 @@
+{
+  "version": "xgb_v1",
+  "trained_at": "2026-10-13T14:48:05+00:00",
+  "features": [
+    "tmax_mean_7d",
+    "tmax_mean_14d",
+    "rh_mean_7d",
+    "rh_mean_14d",
+    "wind_mean_7d",
+    "wind_mean_14d",
+    "precip_mean_7d",
+    "precip_mean_14d",
+    "days_since_rain",
+    "fwi_7d",
+    "elev_mean",
+    "slope_mean",
+    "hotspots_4w",
+    "hotspots_12w",
+    "hotspots_52w",
+    "days_since_fire",
+    "woy_sin",
+    "woy_cos"
+  ],
+  "training_window": {
+    "train": [
+      2015,
+      2021
+    ],
+    "val": [
+      2022,
+      2023
+    ],
+    "test": [
+      2024,
+      2024
+    ]
+  },
+  "hyperparameters": {
+    "max_depth": 5,
+    "learning_rate": 0.1,
+    "n_estimators": 200,
+    "min_child_weight": 1,
+    "scale_pos_weight": 3.347,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "eval_metric": "aucpr",
+    "random_state": 42,
+    "monotone_constraints": "(1,1,-1,-1,1,1,-1,-1,1,1,0,0,0,0,0,0,0,0)"
+  },
+  "metrics": {
+    "logreg": {
+      "val": {
+        "pr_auc": 0.6699,
+        "roc_auc": 0.8861,
+        "brier": 0.1424,
+        "positive_rate": 0.2438,
+        "n": 8216
+      },
+      "test": {
+        "pr_auc": 0.7747,
+        "roc_auc": 0.9106,
+        "brier": 0.1293,
+        "positive_rate": 0.3006,
+        "n": 4108
+      }
+    },
+    "xgboost": {
+      "val": {
+        "pr_auc": 0.7622,
+        "roc_auc": 0.9148,
+        "brier": 0.1167,
+        "positive_rate": 0.2438,
+        "n": 8216
+      },
+      "test": {
+        "pr_auc": 0.8553,
+        "roc_auc": 0.9376,
+        "brier": 0.1048,
+        "positive_rate": 0.3006,
+        "n": 4108
+      }
+    },
+    "persistence": {
+      "val": {
+        "pr_auc": 0.4779,
+        "roc_auc": 0.801,
+        "brier": 0.2321,
+        "positive_rate": 0.2438,
+        "n": 8216
+      },
+      "test": {
+        "pr_auc": 0.5659,
+        "roc_auc": 0.8204,
+        "brier": 0.2157,
+        "positive_rate": 0.3006,
+        "n": 4108
+      }
+    }
+  },
+  "alert_thresholds": {
+    "Moderate": 0.1568,
+    "High": 0.6829,
+    "Very High": 0.9206
+  }
+}

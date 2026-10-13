@@ -43,8 +43,10 @@ All raw responses are cached in `data/raw/` (gitignored), so reruns do not re-do
    - week of year as sine and cosine
 5. **Split** (`train.py`): by time only — train 2015–2021, validate 2022–2023, test 2024.
 6. **Models**: logistic regression (`class_weight="balanced"`, median imputation, scaling) as a
-   baseline; XGBoost with `scale_pos_weight = negatives / positives`, tuned with a 16-point grid
-   (depth, learning rate, trees, min child weight) on validation PR-AUC.
+   baseline; XGBoost with `scale_pos_weight = negatives / positives` and physically motivated
+   monotone constraints on the weather features, tuned with a 16-point grid (depth, learning rate,
+   trees, min child weight) on validation PR-AUC. A naive persistence rule is reported as a
+   reference.
 7. **Evaluation** (`evaluate.py`): PR-AUC, ROC-AUC, Brier score, PR curve and calibration curve
    on the 2024 test set → `reports/`.
 8. **Explanations** (`explain.py`): SHAP `TreeExplainer` on XGBoost; the top 5 signed
@@ -93,7 +95,41 @@ and live outlooks `<status>Actual</status>`.
 
 ## Results (2024 test set)
 
-RESULTS_TABLE
+Weekly predictions for 79 cells × 52 weeks of 2024 (4,108 cell-weeks, 30.1 % positive).
+Validation (2022–2023, 8,216 cell-weeks) in brackets. Full numbers: `reports/metrics.json`.
+
+| Model | PR-AUC ↑ | ROC-AUC ↑ | Brier ↓ |
+|---|---|---|---|
+| Persistence (fire in last 4 weeks) | 0.566 (0.478) | 0.820 (0.801) | 0.216 (0.232) |
+| Logistic regression, balanced | 0.775 (0.670) | 0.911 (0.886) | 0.129 (0.142) |
+| **XGBoost, monotone** (`xgb_v1`) | **0.855** (0.762) | **0.938** (0.915) | **0.105** (0.117) |
+
+Selected XGBoost hyperparameters (validation PR-AUC): `max_depth=5, learning_rate=0.1,
+n_estimators=200, min_child_weight=1, scale_pos_weight=3.35`, with **monotone constraints**:
+risk can only rise with Tmax, wind, days since rain and FWI, and only fall with humidity and
+precipitation. An unconstrained model scored almost the same (validation PR-AUC 0.763 vs 0.762,
+test 0.854 vs 0.855) but sometimes *lowered* risk under a hotter, drier scenario, which made the
+what-if simulator physically implausible. Alert thresholds derived from validation predictions:
+Moderate ≥ 0.16, High ≥ 0.68, Very High ≥ 0.92.
+
+**What drives predictions** (share of 2024 cell-weeks where the feature is in the SHAP top 5):
+days since last hotspot (82 %), hotspots in the past 4 weeks (78 %), season (week-of-year
+cos 76 %, sin 62 %), mean elevation (47 %), 14-day Tmax (24 %), days since rain (24 %) and 7-day
+humidity (22 %).
+Fire history and seasonality dominate; weather mainly modulates risk within the season.
+
+**Seasonality check (2024, mean predicted P vs observed rate):** Jan 0.68/0.54, Apr 0.63/0.65,
+Jun 0.48/0.43, Jul 0.02/0.00, Oct 0.18/0.09, Dec 0.43/0.36. The model reproduces the monsoon
+shutdown and the pre-monsoon peak. Winter (Dec–Feb) detections are also frequent and widespread:
+the positive rate is highest in the plains (Haridwar 0.61, Udham Singh Nagar 0.49) but nearly as
+high in hill districts (Bageshwar 0.49, Almora 0.47). Cells below 1,000 m hold 26 % of winter
+positives while being 22 % of cells. Because a 0.25° cell counts as positive after a single
+detection, small agricultural and terrace burns are enough, so "fire" here is broader than
+forest wildfire (see Limitations).
+
+**Live outlook example.** Issued 2026-10-13 for the week of 2026-10-19 (post-monsoon): mean
+P = 0.18; 49 Low, 25 Moderate, 4 High, 1 Very High cells. Inputs: 92 days of observed weather plus
+6 forecast days, and 6,885 recent detections (SP archive to 2026-06-30, NRT afterwards).
 
 ![Precision-recall](reports/pr_curve_test.png) ![Calibration](reports/calibration_test.png)
 
