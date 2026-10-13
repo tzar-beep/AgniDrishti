@@ -26,9 +26,11 @@ TRAIN_YEARS = (2015, 2021)
 VAL_YEARS = (2022, 2023)
 TEST_YEARS = (2024, 2024)
 
-# FIRMS: VIIRS S-NPP standard-processing archive. Low-confidence ("l") detections are dropped.
+# FIRMS: VIIRS S-NPP standard-processing archive. Low-confidence ("l") detections are dropped,
+# and so are static land sources such as industrial flares (VIIRS "type" 2) and offshore (3).
 FIRMS_SOURCE = "VIIRS_SNPP_SP"
 FIRMS_KEEP_CONFIDENCE = ("n", "h")
+FIRMS_KEEP_TYPES = (0,)  # presumed vegetation fire
 FIRMS_DAY_RANGE = 5  # max days per FIRMS area request
 
 # Labels / features.

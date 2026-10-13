@@ -28,8 +28,8 @@ All raw responses are cached in `data/raw/` (gitignored), so reruns do not re-do
 1. **Grid** (`grid.py`): 0.25° cells over the bounding box 77.5–81.25°E, 28.5–31.5°N; a cell is
    kept if its centroid lies inside the GADM polygon (**79 cells**). `cell_id = r{lat_idx}c{lon_idx}`
    uses the global 0.25° index, so IDs are stable.
-2. **Ingest** (`ingest/`): FIRMS in 5-day area requests; low-confidence (`l`) detections are
-   dropped, the rest clipped to the state polygon and assigned to cells. Weather per cell centroid
+2. **Ingest** (`ingest/`): FIRMS in 5-day area requests; low-confidence (`l`) detections and static
+   industrial sources (VIIRS `type` 2, e.g. flares) are dropped, the rest clipped to the state polygon and assigned to cells. Weather per cell centroid
    per year. Terrain: 11 × 11 elevation samples per cell → mean elevation and mean slope.
 3. **Labels** (`labels.py`): forecast dates are Mondays (ISO week starts). `y = 1` if any kept
    detection falls in `[week_start, week_start + 7 days)`.
@@ -102,24 +102,23 @@ Validation (2022–2023, 8,216 cell-weeks) in brackets. Full numbers: `reports/m
 |---|---|---|---|
 | Persistence (fire in last 4 weeks) | 0.566 (0.478) | 0.820 (0.801) | 0.216 (0.232) |
 | Logistic regression, balanced | 0.775 (0.670) | 0.911 (0.886) | 0.129 (0.142) |
-| **XGBoost, monotone** (`xgb_v1`) | **0.855** (0.762) | **0.938** (0.915) | **0.105** (0.117) |
+| **XGBoost, monotone** (`xgb_v1`) | **0.853** (0.762) | **0.937** (0.914) | **0.105** (0.117) |
 
 Selected XGBoost hyperparameters (validation PR-AUC): `max_depth=5, learning_rate=0.1,
 n_estimators=200, min_child_weight=1, scale_pos_weight=3.35`, with **monotone constraints**:
 risk can only rise with Tmax, wind, days since rain and FWI, and only fall with humidity and
 precipitation. An unconstrained model scored almost the same (validation PR-AUC 0.763 vs 0.762,
-test 0.854 vs 0.855) but sometimes *lowered* risk under a hotter, drier scenario, which made the
+test 0.854 vs 0.853) but sometimes *lowered* risk under a hotter, drier scenario, which made the
 what-if simulator physically implausible. Alert thresholds derived from validation predictions:
-Moderate ≥ 0.16, High ≥ 0.68, Very High ≥ 0.92.
+Moderate ≥ 0.16, High ≥ 0.67, Very High ≥ 0.92.
 
 **What drives predictions** (share of 2024 cell-weeks where the feature is in the SHAP top 5):
-days since last hotspot (82 %), hotspots in the past 4 weeks (78 %), season (week-of-year
-cos 76 %, sin 62 %), mean elevation (47 %), 14-day Tmax (24 %), days since rain (24 %) and 7-day
-humidity (22 %).
+days since last hotspot (83 %), hotspots in the past 4 weeks (78 %), season (week-of-year
+cos 78 %, sin 63 %), mean elevation (48 %), 14-day Tmax (26 %) and days since rain (23 %).
 Fire history and seasonality dominate; weather mainly modulates risk within the season.
 
-**Seasonality check (2024, mean predicted P vs observed rate):** Jan 0.68/0.54, Apr 0.63/0.65,
-Jun 0.48/0.43, Jul 0.02/0.00, Oct 0.18/0.09, Dec 0.43/0.36. The model reproduces the monsoon
+**Seasonality check (2024, mean predicted P vs observed rate):** Jan 0.67/0.54, Apr 0.63/0.65,
+Jun 0.49/0.43, Jul 0.02/0.00, Oct 0.18/0.09, Dec 0.43/0.36. The model reproduces the monsoon
 shutdown and the pre-monsoon peak. Winter (Dec–Feb) detections are also frequent and widespread:
 the positive rate is highest in the plains (Haridwar 0.61, Udham Singh Nagar 0.49) but nearly as
 high in hill districts (Bageshwar 0.49, Almora 0.47). Cells below 1,000 m hold 26 % of winter
@@ -128,7 +127,7 @@ detection, small agricultural and terrace burns are enough, so "fire" here is br
 forest wildfire (see Limitations).
 
 **Live outlook example.** Issued 2026-10-13 for the week of 2026-10-19 (post-monsoon): mean
-P = 0.18; 49 Low, 25 Moderate, 4 High, 1 Very High cells. Inputs: 92 days of observed weather plus
+P = 0.18; 48 Low, 26 Moderate, 4 High, 1 Very High cells. Inputs: 92 days of observed weather plus
 6 forecast days, and 6,885 recent detections (SP archive to 2026-06-30, NRT afterwards).
 
 ![Precision-recall](reports/pr_curve_test.png) ![Calibration](reports/calibration_test.png)

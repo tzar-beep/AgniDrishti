@@ -332,7 +332,7 @@ async function loadTimeline() {
         if (t.dates[i]) { stopPlay(); loadRisk(t.dates[i]); }
       },
       plugins: {
-        legend: { position: "right", labels: { boxWidth: 10, boxHeight: 6, font: { size: 9 } } },
+        legend: { position: "top", align: "end", labels: { boxWidth: 12, boxHeight: 6, font: { size: 11 } } },
         tooltip: { callbacks: {
           title: (it) => `Week of ${it[0].label}${fc.has(it[0].label) ? " (outlook)" : ""}`,
           label: (it) => it.datasetIndex === 0
@@ -340,11 +340,12 @@ async function loadTimeline() {
             : `mean P: ${it.raw.toFixed(3)} · elevated cells: ${t.elevated[it.dataIndex]}` } },
       },
       scales: {
-        x: { grid: { display: false }, ticks: { autoSkip: false, maxRotation: 0, font: { size: 9 },
+        x: { grid: { display: false }, ticks: { autoSkip: false, maxRotation: 0, font: { size: 11 },
           // label only the first week of each year
           callback: (v, i) => (t.dates[i].slice(0, 4) !== (t.dates[i - 1] || "").slice(0, 4)
             ? t.dates[i].slice(0, 4) : "") } },
-        y: { min: 0, max: 1, ticks: { stepSize: 0.5, font: { size: 9 } } },
+        y: { min: 0, max: 1, ticks: { stepSize: 0.25, font: { size: 10 } },
+          title: { display: true, text: "P / share burned", font: { size: 10 } } },
       },
     },
     plugins: [markerPlugin],

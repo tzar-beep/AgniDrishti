@@ -1,6 +1,6 @@
 {
   "version": "xgb_v1",
-  "trained_at": "2026-10-13T14:48:05+00:00",
+  "trained_at": "2026-10-13T16:35:17+00:00",
   "features": [
     "tmax_mean_7d",
     "tmax_mean_14d",
@@ -50,32 +50,32 @@
   "metrics": {
     "logreg": {
       "val": {
-        "pr_auc": 0.6699,
+        "pr_auc": 0.67,
         "roc_auc": 0.8861,
-        "brier": 0.1424,
+        "brier": 0.1423,
         "positive_rate": 0.2438,
         "n": 8216
       },
       "test": {
         "pr_auc": 0.7747,
         "roc_auc": 0.9106,
-        "brier": 0.1293,
+        "brier": 0.1292,
         "positive_rate": 0.3006,
         "n": 4108
       }
     },
     "xgboost": {
       "val": {
-        "pr_auc": 0.7622,
-        "roc_auc": 0.9148,
-        "brier": 0.1167,
+        "pr_auc": 0.7618,
+        "roc_auc": 0.9143,
+        "brier": 0.1166,
         "positive_rate": 0.2438,
         "n": 8216
       },
       "test": {
-        "pr_auc": 0.8553,
-        "roc_auc": 0.9376,
-        "brier": 0.1048,
+        "pr_auc": 0.8527,
+        "roc_auc": 0.9369,
+        "brier": 0.1049,
         "positive_rate": 0.3006,
         "n": 4108
       }
@@ -98,8 +98,8 @@
     }
   },
   "alert_thresholds": {
-    "Moderate": 0.1568,
-    "High": 0.6829,
-    "Very High": 0.9206
+    "Moderate": 0.1584,
+    "High": 0.6749,
+    "Very High": 0.9199
   }
 }

@@ -1,32 +1,32 @@
 {
   "logreg": {
     "val": {
-      "pr_auc": 0.6699,
+      "pr_auc": 0.67,
       "roc_auc": 0.8861,
-      "brier": 0.1424,
+      "brier": 0.1423,
       "positive_rate": 0.2438,
       "n": 8216
     },
     "test": {
       "pr_auc": 0.7747,
       "roc_auc": 0.9106,
-      "brier": 0.1293,
+      "brier": 0.1292,
       "positive_rate": 0.3006,
       "n": 4108
     }
   },
   "xgboost": {
     "val": {
-      "pr_auc": 0.7622,
-      "roc_auc": 0.9148,
-      "brier": 0.1167,
+      "pr_auc": 0.7618,
+      "roc_auc": 0.9143,
+      "brier": 0.1166,
       "positive_rate": 0.2438,
       "n": 8216
     },
     "test": {
-      "pr_auc": 0.8553,
-      "roc_auc": 0.9376,
-      "brier": 0.1048,
+      "pr_auc": 0.8527,
+      "roc_auc": 0.9369,
+      "brier": 0.1049,
       "positive_rate": 0.3006,
       "n": 4108
     }

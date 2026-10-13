@@ -88,10 +88,15 @@ def download(start_year: int = config.START_YEAR, end_year: int = config.END_YEA
 
 
 def clean(raw: pd.DataFrame) -> pd.DataFrame:
-    """Drop low-confidence detections, clip to the state polygon and assign ``cell_id``."""
+    """Drop low-confidence and static-source detections, clip to the state polygon and assign
+    ``cell_id``."""
     n0 = len(raw)
     df = raw[raw["confidence"].isin(config.FIRMS_KEEP_CONFIDENCE)]
     log.info("Dropped %d low-confidence detections of %d", n0 - len(df), n0)
+    if "type" in df.columns:  # the SP archive has it; NRT files do not
+        n1 = len(df)
+        df = df[df["type"].isin(config.FIRMS_KEEP_TYPES)]
+        log.info("Dropped %d static land-source / offshore detections (VIIRS type 2/3)", n1 - len(df))
 
     pts = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude), crs=4326)
     inside = pts.within(download_boundary().union_all())
