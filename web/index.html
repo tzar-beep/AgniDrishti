@@ -3,47 +3,132 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AgniDrishti – Uttarakhand fire risk</title>
+  <title>AgniDrishti · Fire Risk Uttarakhand</title>
+  <meta name="description" content="Weekly 0.25° wildfire hotspot probability for Uttarakhand, India.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>AgniDrishti <span>weekly wildfire risk · Uttarakhand</span></h1>
-    <label>Week starting
-      <select id="date"></select>
-    </label>
+  <header class="bar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <span class="name">AGNIDRISHTI</span>
+      <span class="sub">Wildfire hotspot forecast · Uttarakhand · 0.25° grid · 7-day horizon</span>
+    </div>
+    <div class="controls">
+      <button id="prev" class="btn" title="Previous week (←)" aria-label="Previous week">‹</button>
+      <label class="field"><span>WEEK OF</span><select id="date" aria-label="Forecast week"></select></label>
+      <button id="next" class="btn" title="Next week (→)" aria-label="Next week">›</button>
+      <span id="mode-badge" class="badge" hidden>OUTLOOK</span>
+      <label class="field color-mode"><span>COLOR</span>
+        <select id="color-mode" aria-label="Color cells by">
+          <option value="quintile">Quintiles</option>
+          <option value="level">Alert level</option>
+        </select>
+      </label>
+      <label class="toggle" title="Outline cells where a hotspot was actually detected">
+        <input type="checkbox" id="obs"> <span>Observed</span>
+      </label>
+    </div>
   </header>
+
+  <div id="alert-strip" class="alert-strip" hidden>
+    <span class="lvl-chip" id="alert-level"></span>
+    <span id="alert-text"></span>
+    <button id="alert-open" class="link">View bulletin →</button>
+  </div>
+
+  <section class="kpis" aria-label="Summary for selected week">
+    <div class="kpi"><span class="k">Cells</span><span class="v" id="k-cells">–</span></div>
+    <div class="kpi"><span class="k">Mean P</span><span class="v" id="k-mean">–</span></div>
+    <div class="kpi"><span class="k">P ≥ 0.5</span><span class="v" id="k-high">–</span></div>
+    <div class="kpi"><span class="k">Observed</span><span class="v" id="k-obs">–</span></div>
+    <div class="kpi"><span class="k" title="Top-10 cells by P that had an observed hotspot">Top-10 hits</span><span class="v" id="k-hit">–</span></div>
+    <div class="kpi wide"><span class="k">Model</span><span class="v" id="k-model">–</span></div>
+  </section>
+
   <main>
-    <div id="map"></div>
+    <div id="map" role="application" aria-label="Risk map"></div>
     <aside id="panel">
-      <section id="cell" hidden>
-        <button id="close" aria-label="Close cell details">×</button>
-        <h2 id="cell-title"></h2>
-        <p id="cell-prob"></p>
-        <h3>Why? Top 5 drivers (SHAP, log-odds)</h3>
-        <canvas id="shap-chart" height="200"></canvas>
-        <h3>Last 12 weeks</h3>
-        <canvas id="history-chart" height="180"></canvas>
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="cell" class="on">Cell</button>
+        <button role="tab" data-tab="alerts">Alerts</button>
+        <button role="tab" data-tab="rank">Ranking</button>
+        <button role="tab" data-tab="model">Model</button>
+      </nav>
+
+      <section id="tab-cell" class="tab on">
+        <p id="cell-empty" class="muted">Select a cell on the map or in the ranking.</p>
+        <div id="cell" hidden>
+          <div class="cell-head">
+            <div>
+              <div class="mono id" id="cell-id"></div>
+              <div class="muted mono small" id="cell-loc"></div>
+            </div>
+            <div class="prob">
+              <div class="mono big" id="cell-prob"></div>
+              <div class="muted small" id="cell-obs"></div>
+            </div>
+          </div>
+          <h3>Top-5 drivers <span class="muted">SHAP, log-odds</span></h3>
+          <div class="chart" style="height:230px"><canvas id="shap-chart"></canvas></div>
+          <h3>Trailing 12 weeks</h3>
+          <div class="chart" style="height:170px"><canvas id="history-chart"></canvas></div>
+          <h3>Inputs at forecast time</h3>
+          <table class="kv mono" id="cell-feats"></table>
+        </div>
       </section>
-      <section id="about">
-        <h2>About this model</h2>
-        <p>Probability that a VIIRS fire hotspot (nominal/high confidence) is detected in each
-          0.25° cell during the 7 days from the selected Monday. Model: XGBoost on weather,
-          terrain and fire-history features; trained 2015–2021, validated 2022–2023,
-          tested 2024.</p>
-        <table id="metrics"></table>
+
+      <section id="tab-alerts" class="tab">
+        <div class="bulletin-head">
+          <div>
+            <div class="mono small muted" id="b-kind"></div>
+            <div class="b-title" id="b-title"></div>
+          </div>
+          <a id="b-cap" class="btn-ghost mono" href="#" download>CAP 1.2 XML</a>
+        </div>
+        <table class="grid-table" id="b-table">
+          <thead><tr><th>District</th><th>Level</th><th class="r">Max P</th><th class="r">Elevated</th></tr></thead>
+          <tbody id="b-body"></tbody>
+        </table>
+        <h3>Public advice</h3>
+        <div id="b-advice"></div>
+        <p class="muted small">Levels: P ≥ <span class="mono" id="b-thr"></span>, set from the model's
+          validation-period predictions. Research prototype, not an official warning; follow the
+          Uttarakhand Forest Department and district administration. Emergency: 112.</p>
+      </section>
+
+      <section id="tab-rank" class="tab">
+        <table class="grid-table">
+          <thead><tr><th>#</th><th>Cell</th><th>District</th><th class="r">P</th><th class="r">Obs</th></tr></thead>
+          <tbody id="rank-body"></tbody>
+        </table>
+      </section>
+
+      <section id="tab-model" class="tab">
+        <h3>Test performance <span class="muted">2024, weekly cell predictions</span></h3>
+        <table class="grid-table" id="metrics"></table>
+        <h3>Configuration</h3>
+        <table class="kv mono" id="model-cfg"></table>
+        <h3>Target</h3>
+        <p>P(≥1 VIIRS S-NPP 375 m detection of nominal/high confidence in the cell during the 7 days
+          starting on the selected Monday). Inputs use only data dated before that Monday.</p>
         <h3>Limitations</h3>
         <ul>
-          <li>FIRMS detects heat, not cause: controlled burns and crop-residue fires count too.</li>
-          <li>Weather is ERA5-based at ~0.25°; local valley/ridge conditions are not resolved.</li>
-          <li>Cloud and canopy cover can hide fires, so labels miss some events.</li>
-          <li>Probabilities from a class-weighted model are not perfectly calibrated.</li>
+          <li>FIRMS records thermal anomalies, not cause; prescribed and agricultural burns are included.</li>
+          <li>Weather is ERA5-based (~0.25°), sampled at cell centroids; terrain-driven microclimate is not resolved.</li>
+          <li>Cloud, smoke and canopy obscure detections, so some negatives are missed fires.</li>
+          <li>Class weighting inflates probabilities; treat P as a relative ranking.</li>
+          <li>Hindcast for 2022–2024 only; no live forecast inputs.</li>
         </ul>
-        <p class="hint">Hover a cell for its probability; tap/click for details.</p>
+        <p class="muted small">Data: NASA FIRMS · Open-Meteo / ERA5 (CC BY 4.0) · Copernicus DEM · GADM 4.1.</p>
       </section>
     </aside>
   </main>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="app.js"></script>

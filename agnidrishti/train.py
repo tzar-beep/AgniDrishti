@@ -19,6 +19,7 @@ from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 
 from agnidrishti import config
+from agnidrishti.alerts import compute_thresholds
 from agnidrishti.evaluate import compute_metrics, plot_calibration, plot_pr
 from agnidrishti.explain import top_k_contributions
 from agnidrishti.features import DATASET_PATH, FEATURES
@@ -97,6 +98,11 @@ def main() -> None:
             metrics[name][split] = compute_metrics(part["y"].to_numpy(), p)
             if split == "test":
                 curves[name] = (part["y"].to_numpy(), p)
+    # Naive reference: predict fire if the cell burned in the previous 4 weeks.
+    metrics["persistence"] = {
+        split: compute_metrics(part["y"].to_numpy(), (part["hotspots_4w"] > 0).astype(float).to_numpy())
+        for split, part in (("val", val), ("test", test))
+    }
     (config.REPORTS_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2))
     plot_calibration(curves, str(config.REPORTS_DIR / "calibration_test.png"))
     plot_pr(curves, str(config.REPORTS_DIR / "pr_curve_test.png"))
@@ -113,6 +119,7 @@ def main() -> None:
                             "test": config.TEST_YEARS},
         "hyperparameters": params,
         "metrics": metrics,
+        "alert_thresholds": compute_thresholds(xgb.predict_proba(val[FEATURES])[:, 1]),
     }
     model_path.with_suffix(".json").write_text(json.dumps(sidecar, indent=2))
     log.info("Saved model to %s", model_path)

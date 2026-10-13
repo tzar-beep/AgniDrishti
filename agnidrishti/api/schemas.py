@@ -13,6 +13,7 @@ class Health(BaseModel):
 
 class Dates(BaseModel):
     dates: list[str]
+    forecast_dates: list[str] = []
 
 
 class RiskFeature(BaseModel):
@@ -24,12 +25,33 @@ class RiskFeature(BaseModel):
 class RiskCollection(BaseModel):
     type: str = "FeatureCollection"
     date: str
+    is_forecast: bool = False
     features: list[RiskFeature]
+
+
+class DistrictAlert(BaseModel):
+    district: str
+    level: str
+    max_prob: float
+    mean_prob: float
+    n_cells: int
+    n_elevated: int
+    cells: list[str]
+    advice: str
+
+
+class Alerts(BaseModel):
+    date: str
+    is_forecast: bool
+    thresholds: dict[str, float]
+    levels: list[str]
+    advice: dict[str, str]
+    districts: list[DistrictAlert]
 
 
 class HistoryRow(BaseModel):
     week_start: str
-    y: int
+    y: int | None
     prob: float | None
     features: dict[str, float | None]
 
@@ -60,3 +82,4 @@ class ModelInfo(BaseModel):
     training_window: dict[str, Any]
     hyperparameters: dict[str, Any]
     metrics: dict[str, Any]
+    alert_thresholds: dict[str, float] | None = None

@@ -3,6 +3,7 @@
 import io
 import logging
 import zipfile
+from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
@@ -14,27 +15,51 @@ from agnidrishti.utils import http_get, setup_logging
 log = logging.getLogger(__name__)
 
 BOUNDARY_PATH = config.DATA_RAW / "uttarakhand_gadm41.geojson"
+DISTRICTS_PATH = config.DATA_RAW / "uttarakhand_districts_gadm41.geojson"
 GRID_PATH = config.DATA_PROCESSED / "grid.parquet"
 
 
-def download_boundary() -> gpd.GeoDataFrame:
-    """Download GADM 4.1 India level-1 once and cache the Uttarakhand polygon."""
-    if BOUNDARY_PATH.exists():
-        return gpd.read_file(BOUNDARY_PATH)
+def _gadm_uttarakhand(level: int, out: Path) -> gpd.GeoDataFrame:
+    """Download GADM 4.1 India at ``level`` once and cache the Uttarakhand features."""
+    if out.exists():
+        return gpd.read_file(out)
     config.DATA_RAW.mkdir(parents=True, exist_ok=True)
-    zip_path = config.DATA_RAW / "gadm41_IND_1.json.zip"
+    url = config.GADM_URL.replace("_1.json", f"_{level}.json")
+    zip_path = config.DATA_RAW / url.rsplit("/", 1)[1]
     if not zip_path.exists():
-        log.info("Downloading GADM boundaries from %s", config.GADM_URL)
-        zip_path.write_bytes(http_get(config.GADM_URL, timeout=600).content)
+        log.info("Downloading GADM level %d from %s", level, url)
+        zip_path.write_bytes(http_get(url, timeout=600).content)
     with zipfile.ZipFile(zip_path) as zf:
         name = next(n for n in zf.namelist() if n.endswith(".json"))
-        states = gpd.read_file(io.BytesIO(zf.read(name)))
-    state = states[states["NAME_1"] == config.STATE_NAME][["NAME_1", "geometry"]]
-    if state.empty:
-        raise ValueError(f"{config.STATE_NAME} not found in GADM file")
-    state.to_file(BOUNDARY_PATH, driver="GeoJSON")
-    log.info("Cached boundary to %s", BOUNDARY_PATH)
-    return state
+        gdf = gpd.read_file(io.BytesIO(zf.read(name)))
+    cols = ["NAME_1", "geometry"] if level == 1 else ["NAME_1", "NAME_2", "geometry"]
+    sub = gdf[gdf["NAME_1"] == config.STATE_NAME][cols]
+    if sub.empty:
+        raise ValueError(f"{config.STATE_NAME} not found in GADM level {level}")
+    sub.to_file(out, driver="GeoJSON")
+    log.info("Cached %s", out)
+    return sub
+
+
+def download_boundary() -> gpd.GeoDataFrame:
+    """Uttarakhand state polygon (GADM level 1)."""
+    return _gadm_uttarakhand(1, BOUNDARY_PATH)
+
+
+def download_districts() -> gpd.GeoDataFrame:
+    """Uttarakhand district polygons (GADM level 2, column ``NAME_2``)."""
+    return _gadm_uttarakhand(2, DISTRICTS_PATH)
+
+
+def assign_districts(grid: gpd.GeoDataFrame, districts: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Add a ``district`` column: the district containing each cell centroid (nearest if none)."""
+    utm = grid.to_crs(32644)
+    pts = gpd.GeoDataFrame(utm[["cell_id"]], geometry=utm.geometry.centroid, crs=utm.crs)
+    joined = gpd.sjoin_nearest(pts, districts.to_crs(32644)[["NAME_2", "geometry"]])
+    names = joined.drop_duplicates("cell_id").set_index("cell_id")["NAME_2"]
+    # GADM writes multi-word names without spaces ("TehriGarhwal"); "Garhwal" is Pauri Garhwal.
+    names = names.str.replace(r"(?<=[a-z])(?=[A-Z])", " ", regex=True).replace("Garhwal", "Pauri Garhwal")
+    return grid.assign(district=grid["cell_id"].map(names))
 
 
 def build_grid(
@@ -74,7 +99,7 @@ def load_grid() -> gpd.GeoDataFrame:
 def main() -> None:
     """CLI entry point: build and save the grid."""
     setup_logging()
-    grid = build_grid(download_boundary())
+    grid = assign_districts(build_grid(download_boundary()), download_districts())
     config.DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
     grid.to_parquet(GRID_PATH)
     log.info("Saved %d cells to %s", len(grid), GRID_PATH)

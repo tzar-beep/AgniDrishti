@@ -3,8 +3,10 @@
 import logging
 import math
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
+from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
@@ -18,7 +20,9 @@ log = logging.getLogger(__name__)
 API = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
 CACHE_DIR = config.DATA_RAW / "firms"
 OUT_PATH = config.DATA_PROCESSED / "firms.parquet"
-WORKERS = 4  # parallel requests; well under the FIRMS 5000-per-10-minute key limit
+STATUS_API = "https://firms.modaps.eosdis.nasa.gov/mapserver/mapkey_status/"
+WORKERS = 4  # parallel requests; the 5000-transactions-per-10-minutes quota is waited out
+QUOTA_WAIT_S = 600
 
 
 def get_map_key() -> str:
@@ -33,13 +37,30 @@ def get_map_key() -> str:
     return key
 
 
-def fetch_chunk(key: str, start: date) -> pd.DataFrame:
+def quota_exhausted(key: str) -> bool:
+    """True if the MAP_KEY has used up its transactions for the current 10-minute window."""
+    status = http_get(STATUS_API, {"MAP_KEY": key}).json()
+    return int(status.get("current_transactions", 0)) >= int(status.get("transaction_limit", 1))
+
+
+def fetch_chunk(
+    key: str, start: date, source: str = config.FIRMS_SOURCE, cache_dir: Path = CACHE_DIR
+) -> pd.DataFrame:
     """Fetch (or load from cache) FIRMS detections for DAY_RANGE days from ``start``."""
-    path = CACHE_DIR / f"{config.FIRMS_SOURCE}_{start.isoformat()}.csv"
+    path = cache_dir / f"{source}_{start.isoformat()}.csv"
     if not path.exists():
         w, s, e, n = config.BBOX
-        url = f"{API}/{key}/{config.FIRMS_SOURCE}/{w},{s},{e},{n}/{config.FIRMS_DAY_RANGE}/{start}"
-        text = http_get(url).text
+        url = f"{API}/{key}/{source}/{w},{s},{e},{n}/{config.FIRMS_DAY_RANGE}/{start}"
+        while True:
+            try:
+                text = http_get(url).text
+                break
+            except FetchError as exc:
+                # FIRMS answers "Invalid MAP_KEY" both for bad keys and an exhausted quota.
+                if "Invalid MAP_KEY" not in str(exc) or not quota_exhausted(key):
+                    raise
+                log.warning("FIRMS transaction limit reached; waiting %ds", QUOTA_WAIT_S)
+                time.sleep(QUOTA_WAIT_S)
         if not text.startswith("latitude"):
             raise FetchError(f"Unexpected FIRMS response for {start}: {text[:200]!r}")
         tmp = path.with_suffix(".tmp")

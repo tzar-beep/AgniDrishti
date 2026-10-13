@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from agnidrishti import config
@@ -22,6 +22,14 @@ def create_app(
     app = FastAPI(title="AgniDrishti", version="0.1.0")
     app.state.store = Store.load(processed_dir, model_json)
     log.info("Loaded %d cells, %d dates", len(app.state.store.geometry), len(app.state.store.dates))
+    @app.middleware("http")
+    async def revalidate_static(request: Request, call_next):
+        """Make browsers revalidate the frontend (ETag) so code updates show up immediately."""
+        response = await call_next(request)
+        if not request.url.path.startswith("/api"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     app.include_router(router)
     app.mount("/", StaticFiles(directory=config.WEB_DIR, html=True), name="web")
     return app
