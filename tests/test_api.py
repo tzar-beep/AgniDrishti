@@ -1,10 +1,13 @@
 import json
 
 import geopandas as gpd
+import joblib
+import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 from shapely.geometry import box
+from xgboost import XGBClassifier
 
 from agnidrishti.api.main import create_app
 from agnidrishti.features import FEATURES
@@ -43,6 +46,10 @@ def client(tmp_path_factory):
         "hyperparameters": {}, "metrics": {"xgboost": {"test": {"pr_auc": 0.5}}},
         "alert_thresholds": {"Moderate": 0.3, "High": 0.6, "Very High": 0.8},
     }))
+    rng = np.random.default_rng(0)
+    X = pd.DataFrame(rng.normal(size=(200, len(FEATURES))), columns=FEATURES)
+    model = XGBClassifier(n_estimators=10, max_depth=2).fit(X, (X[FEATURES[0]] > 0).astype(int))
+    joblib.dump(model, d / "model.joblib")
     return TestClient(create_app(d, model_json))
 
 
@@ -127,3 +134,29 @@ def test_model(client):
 def test_frontend_served(client):
     r = client.get("/")
     assert r.status_code == 200 and "leaflet" in r.text.lower()
+
+
+def test_timeseries(client):
+    body = client.get("/api/timeseries").json()
+    assert len(body["dates"]) == 15 and body["n_cells"] == 2
+    assert body["observed"][0] == 0 and body["observed"][-1] is None  # forecast week pending
+    assert body["mean_prob"][0] == pytest.approx(0.55)
+
+
+def test_evaluation(client):
+    body = client.get("/api/evaluation", params={"year": 2024}).json()
+    assert len(body["prob"]) == len(body["y"]) == 28
+    assert client.get("/api/evaluation", params={"year": 1990}).status_code == 404
+
+
+def test_simulate(client):
+    url = f"/api/cells/{CELLS[0]}/simulate"
+    base = client.post(url, json={"date": "2024-01-08"}).json()
+    assert base["prob"] == pytest.approx(base["base_prob"])
+    assert len(base["contributions"]) == 5
+    hot = client.post(url, json={"date": "2024-01-08", "d_tmax": 5, "d_rh": -20,
+                                 "days_since_rain": 60}).json()
+    assert hot["features"]["tmax_mean_7d"] == pytest.approx(6.0)
+    assert hot["features"]["days_since_rain"] == 60
+    assert client.post(url, json={"date": "2024-01-08", "d_tmax": 99}).status_code == 422
+    assert client.post("/api/cells/nope/simulate", json={"date": "2024-01-08"}).status_code == 404

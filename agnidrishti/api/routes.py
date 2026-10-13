@@ -5,13 +5,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import geopandas as gpd
+import joblib
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from shapely.geometry import mapping
 
 from agnidrishti.alerts import ADVICE, LEVELS, assign_levels, district_bulletin, to_cap
 from agnidrishti.api import schemas
+from agnidrishti.explain import top_k_contributions
 from agnidrishti.features import FEATURES
+from agnidrishti.simulate import apply_scenario
 
 router = APIRouter(prefix="/api")
 HISTORY_WEEKS = 12
@@ -30,6 +33,17 @@ class Store:
     model_info: dict
     dates: list[str]
     forecast_dates: list[str]
+    model_path: Path | None = None
+    _model: object = None
+
+    @property
+    def model(self):
+        """The XGBoost model, loaded on first use (only the what-if endpoint needs it)."""
+        if self._model is None:
+            if self.model_path is None or not self.model_path.exists():
+                raise HTTPException(503, "Model file not available for simulation")
+            self._model = joblib.load(self.model_path)
+        return self._model
 
     @classmethod
     def load(cls, processed_dir: Path, model_json: Path) -> "Store":
@@ -65,6 +79,7 @@ class Store:
             model_info=model_info,
             dates=sorted(preds["week_start"].dt.strftime("%Y-%m-%d").unique()),
             forecast_dates=forecast_dates,
+            model_path=model_json.with_suffix(".joblib"),
         )
 
 
@@ -196,3 +211,58 @@ def explain(request: Request, cell_id: str, date: str) -> schemas.Explanation:
 def model(request: Request) -> schemas.ModelInfo:
     """Model version, features, training window, hyperparameters and metrics."""
     return schemas.ModelInfo(**_store(request).model_info)
+
+
+@router.get("/timeseries", response_model=schemas.TimeSeries)
+def timeseries(request: Request) -> schemas.TimeSeries:
+    """Statewide weekly summary for the timeline: mean P, observed and elevated cell counts."""
+    s = _store(request)
+    p = s.predictions
+    elevated = p["level"].isin(["High", "Very High"]) if p["level"].notna().any() else p["prob"] >= 0.5
+    g = p.assign(elev=elevated).groupby("week_start")
+    obs = g["y"].sum(min_count=1)
+    return schemas.TimeSeries(
+        dates=[d.strftime("%Y-%m-%d") for d in g.size().index],
+        mean_prob=[round(float(v), 4) for v in g["prob"].mean()],
+        observed=[None if pd.isna(v) else int(v) for v in obs],
+        elevated=[int(v) for v in g["elev"].sum()],
+        n_cells=len(s.geometry),
+    )
+
+
+@router.get("/evaluation", response_model=schemas.Evaluation)
+def evaluation(request: Request, year: int = 2024) -> schemas.Evaluation:
+    """Predicted probabilities and outcomes for one hindcast year (for threshold analysis)."""
+    s = _store(request)
+    p = s.predictions[(s.predictions["week_start"].dt.year == year) & s.predictions["y"].notna()]
+    if p.empty:
+        raise HTTPException(404, f"No evaluated predictions for {year}")
+    return schemas.Evaluation(year=year, prob=p["prob"].round(4).tolist(),
+                              y=p["y"].astype(int).tolist())
+
+
+@router.post("/cells/{cell_id}/simulate", response_model=schemas.SimulationResult)
+def simulate(request: Request, cell_id: str, scenario: schemas.Scenario) -> schemas.SimulationResult:
+    """Re-score one cell-week under a what-if weather scenario (runs the model on one row)."""
+    s = _store(request)
+    _check_cell(s, cell_id)
+    ts = _check_date(s, scenario.date)
+    rows = s.dataset[(s.dataset["cell_id"] == cell_id) & (s.dataset["week_start"] == ts)]
+    if rows.empty:
+        raise HTTPException(404, f"No features for {cell_id} on {scenario.date}")
+    base = rows.iloc[0][FEATURES].astype(float)
+    new = apply_scenario(base, scenario.d_tmax, scenario.d_rh, scenario.wind_mult,
+                         scenario.days_since_rain)
+    X = pd.DataFrame([base, new], columns=FEATURES)
+    probs = s.model.predict_proba(X)[:, 1]
+    keys = pd.DataFrame({"cell_id": [cell_id], "week_start": [ts]})
+    top = top_k_contributions(s.model, X.iloc[[1]], keys)
+    return schemas.SimulationResult(
+        cell_id=cell_id, date=scenario.date, base_prob=float(probs[0]), prob=float(probs[1]),
+        features={f: round(float(new[f]), 3) for f in FEATURES},
+        contributions=[
+            schemas.Contribution(rank=int(r.rank), feature=r.feature, value=float(r.value),
+                                 contribution=float(r.contribution))
+            for r in top.itertuples()
+        ],
+    )

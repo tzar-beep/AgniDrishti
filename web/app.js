@@ -58,7 +58,7 @@ map.on("mousemove", (e) => {
 });
 
 const state = { dates: [], forecastDates: [], isForecast: false, alerts: null, date: null, cell: null, features: [], breaks: [], layer: null, legend: null,
-  layers: {}, charts: {} };
+  layers: {}, charts: {}, timeline: null, playing: null, evalData: null, simTimer: null };
 
 function quantileBreaks(values) {
   const v = [...values].sort((a, b) => a - b);
@@ -136,6 +136,7 @@ async function loadRisk(date) {
   renderKpis();
   renderRanking();
   writeHash();
+  state.charts.tl?.update("none");
   if (state.cell) await selectCell(state.cell);
 }
 
@@ -207,24 +208,28 @@ async function selectCell(cellId) {
     (props?.observed == null ? "outcome pending" : props.observed ? "hotspot observed" : "no hotspot observed");
   $("cell-loc").textContent = `${props?.district || ""} · ${$("cell-loc").textContent}`;
   drawShap(exp.contributions);
+  state.baseContrib = exp.contributions;
+  resetSim(hist.rows[hist.rows.length - 1]?.features?.days_since_rain, exp.prob);
   drawHistory(hist.rows);
   const now = hist.rows[hist.rows.length - 1];
   $("cell-feats").innerHTML = now ? Object.entries(now.features).map(([k, v]) =>
     `<tr><td>${label(k)}</td><td>${fmtNum(v)} ${(FEATURES[k] || [, ""])[1]}</td></tr>`).join("") : "";
 }
 
-function drawShap(c) {
+function drawShap(c, scenario = false) {
   state.charts.shap?.destroy();
   state.charts.shap = new Chart($("shap-chart"), {
     type: "bar",
     data: {
       labels: c.map((x) => [label(x.feature), `= ${fmtNum(x.value)} ${(FEATURES[x.feature] || [, ""])[1]}`]),
       datasets: [{ data: c.map((x) => x.contribution), barThickness: 14,
-        backgroundColor: c.map((x) => (x.contribution > 0 ? "#b91c1c" : "#1d4ed8")) }],
+        backgroundColor: c.map((x) => (x.contribution > 0 ? "#b91c1c" : "#1d4ed8")),
+        borderColor: scenario ? "#0b5cff" : "transparent", borderWidth: scenario ? 1.5 : 0 }],
     },
     options: {
       indexAxis: "y", maintainAspectRatio: false,
       plugins: { legend: { display: false },
+        title: { display: scenario, text: "scenario", align: "end", color: "#0b5cff", font: { size: 10 } },
         tooltip: { callbacks: { label: (t) => `${t.raw > 0 ? "+" : ""}${t.raw.toFixed(3)} log-odds` } } },
       scales: { x: { title: { display: true, text: "contribution (log-odds)  − lowers · raises +" } },
         y: { grid: { display: false }, ticks: { autoSkip: false, color: "#16181d" } } },
@@ -253,6 +258,188 @@ function drawHistory(rows) {
   });
 }
 
+// ---- Season timeline ---------------------------------------------------------------------------
+const markerPlugin = {
+  id: "weekMarker",
+  afterDatasetsDraw(chart) {
+    const i = state.timeline?.dates.indexOf(state.date);
+    if (i == null || i < 0) return;
+    const x = chart.scales.x.getPixelForValue(i);
+    const { top, bottom } = chart.chartArea;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.strokeStyle = "#0b5cff";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+    ctx.fillStyle = "#0b5cff";
+    ctx.font = '500 10px "IBM Plex Mono", monospace';
+    ctx.textAlign = x > chart.width - 80 ? "right" : "left";
+    ctx.fillText(` ${state.date} `, x, top + 9);
+    ctx.restore();
+  },
+};
+
+async function loadTimeline() {
+  const t = await getJSON("/api/timeseries");
+  state.timeline = t;
+  const fc = new Set(state.forecastDates);
+  state.charts.tl = new Chart($("tl-chart"), {
+    data: {
+      labels: t.dates,
+      datasets: [
+        { type: "bar", label: "cells with observed hotspot", data: t.observed.map((v) => (v == null ? null : v / t.n_cells)),
+          backgroundColor: "rgba(17,17,17,.18)", barPercentage: 1, categoryPercentage: 1, yAxisID: "y" },
+        { type: "line", label: "mean predicted P", data: t.mean_prob, borderColor: "#c2410c", borderWidth: 1.25,
+          pointRadius: t.dates.map((d) => (fc.has(d) ? 4 : 0)), pointBackgroundColor: "#f59e0b", yAxisID: "y" },
+      ],
+    },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      onClick: (_, els, chart) => {
+        const i = els.length ? els[0].index : Math.round(chart.scales.x.getValueForPixel(_.x));
+        if (t.dates[i]) { stopPlay(); loadRisk(t.dates[i]); }
+      },
+      plugins: {
+        legend: { position: "right", labels: { boxWidth: 10, boxHeight: 6, font: { size: 9 } } },
+        tooltip: { callbacks: {
+          title: (it) => `Week of ${it[0].label}${fc.has(it[0].label) ? " (outlook)" : ""}`,
+          label: (it) => it.datasetIndex === 0
+            ? `observed: ${t.observed[it.dataIndex] ?? "pending"} of ${t.n_cells} cells`
+            : `mean P: ${it.raw.toFixed(3)} · elevated cells: ${t.elevated[it.dataIndex]}` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { autoSkip: false, maxRotation: 0, font: { size: 9 },
+          // label only the first week of each year
+          callback: (v, i) => (t.dates[i].slice(0, 4) !== (t.dates[i - 1] || "").slice(0, 4)
+            ? t.dates[i].slice(0, 4) : "") } },
+        y: { min: 0, max: 1, ticks: { stepSize: 0.5, font: { size: 9 } } },
+      },
+    },
+    plugins: [markerPlugin],
+  });
+}
+
+function stopPlay() {
+  clearInterval(state.playing);
+  state.playing = null;
+  $("play").textContent = "▶";
+  $("play").classList.remove("on");
+}
+function togglePlay() {
+  if (state.playing) return stopPlay();
+  $("play").textContent = "❚❚";
+  $("play").classList.add("on");
+  let busy = false;
+  state.playing = setInterval(async () => {
+    if (busy) return;
+    const i = state.dates.indexOf(state.date);
+    if (i >= state.dates.length - 1) return stopPlay();
+    busy = true;
+    try { await loadRisk(state.dates[i + 1]); } finally { busy = false; }
+  }, Number($("speed").value));
+}
+
+// ---- What-if simulator ------------------------------------------------------------------------
+const SIM = { tmax: 0, rh: 0, wind: 1, dry: null };
+let simBase = { dry: null, prob: null };
+const PRESETS = {
+  heat: { tmax: 5, rh: -15 }, dry: { dry: 60, rh: -10 }, wind: { wind: 1.8 },
+  rain: { tmax: -3, rh: 25, dry: 0 }, reset: {},
+};
+
+function resetSim(dry, prob) {
+  simBase = { dry: dry ?? 0, prob };
+  applyPreset("reset", true);
+}
+function applyPreset(name, silent) {
+  Object.assign(SIM, { tmax: 0, rh: 0, wind: 1, dry: null }, PRESETS[name]);
+  $("s-tmax").value = SIM.tmax;
+  $("s-rh").value = SIM.rh;
+  $("s-wind").value = SIM.wind;
+  $("s-dry").value = SIM.dry ?? Math.min(simBase.dry, 120);
+  renderSimLabels();
+  if (silent) showSim(simBase.prob, simBase.prob, null); else queueSim();
+}
+function renderSimLabels() {
+  const sign = (v, d) => `${v >= 0 ? "+" : ""}${v.toFixed(d)}`;
+  $("o-tmax").textContent = `${sign(SIM.tmax, 1)} °C`;
+  $("o-rh").textContent = `${sign(SIM.rh, 0)} pp`;
+  $("o-wind").textContent = `×${SIM.wind.toFixed(2)}`;
+  $("o-dry").textContent = SIM.dry == null ? `${Math.round(simBase.dry)} d` : `${SIM.dry} d`;
+}
+function showSim(base, prob, contribs) {
+  const d = prob - base;
+  $("sim-base").textContent = fmtP(base);
+  $("sim-new").textContent = fmtP(prob);
+  $("sim-delta").textContent = `${d >= 0 ? "+" : ""}${d.toFixed(3)}`;
+  $("sim-delta").className = `mono v ${d > 0.0005 ? "up" : d < -0.0005 ? "down" : ""}`;
+  $("m-base").style.left = `${base * 100}%`;
+  $("m-new").style.left = `${prob * 100}%`;
+  drawShap(contribs || state.baseContrib, !!contribs);
+}
+function queueSim() {
+  clearTimeout(state.simTimer);
+  state.simTimer = setTimeout(runSim, 120);
+}
+async function runSim() {
+  if (!state.cell) return;
+  const body = { date: state.date, d_tmax: SIM.tmax, d_rh: SIM.rh, wind_mult: SIM.wind,
+    days_since_rain: SIM.dry };
+  const r = await fetch(`/api/cells/${state.cell}/simulate`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) return;
+  const res = await r.json();
+  showSim(res.base_prob, res.prob, res.contributions);
+}
+
+// ---- Threshold explorer -----------------------------------------------------------------------
+function confusion(t) {
+  const { prob, y } = state.evalData;
+  let tp = 0, fp = 0, fn = 0, tn = 0;
+  for (let i = 0; i < prob.length; i++) {
+    const a = prob[i] >= t;
+    if (a && y[i]) tp++; else if (a) fp++; else if (y[i]) fn++; else tn++;
+  }
+  return { tp, fp, fn, tn };
+}
+function renderThreshold() {
+  const t = Number($("t-slider").value);
+  $("t-val").textContent = t.toFixed(2);
+  const c = confusion(t);
+  const n = c.tp + c.fp + c.fn + c.tn;
+  const prec = c.tp / Math.max(c.tp + c.fp, 1), rec = c.tp / Math.max(c.tp + c.fn, 1);
+  const f1 = (2 * prec * rec) / Math.max(prec + rec, 1e-9);
+  ["tp", "fp", "fn", "tn"].forEach((k) => ($(`cm-${k}`).textContent = c[k].toLocaleString()));
+  const stats = { Precision: prec.toFixed(3), Recall: rec.toFixed(3), F1: f1.toFixed(3),
+    "Cell-weeks alerted": `${((100 * (c.tp + c.fp)) / n).toFixed(1)}%`,
+    "Fires missed": `${c.fn} of ${c.tp + c.fn}` };
+  $("thr-stats").innerHTML = Object.entries(stats).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+  const ch = state.charts.pr;
+  if (ch) { ch.data.datasets[1].data = [{ x: rec, y: prec }]; ch.update("none"); }
+}
+async function loadEvaluation(defaultT) {
+  try { state.evalData = await getJSON("/api/evaluation?year=2024"); } catch { return; }
+  const pts = [];
+  for (let t = 0.01; t <= 0.99; t += 0.02) {
+    const c = confusion(t);
+    if (c.tp + c.fp) pts.push({ x: c.tp / (c.tp + c.fn), y: c.tp / (c.tp + c.fp) });
+  }
+  state.charts.pr = new Chart($("pr-chart"), {
+    type: "scatter",
+    data: { datasets: [
+      { label: "PR curve (XGBoost, 2024)", data: pts, showLine: true, borderColor: "#c2410c", borderWidth: 1.5, pointRadius: 0 },
+      { label: "selected threshold", data: [], pointRadius: 6, pointBackgroundColor: "#0b5cff", borderColor: "#fff" },
+    ] },
+    options: { maintainAspectRatio: false, animation: false,
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, boxHeight: 6 } } },
+      scales: { x: { min: 0, max: 1, title: { display: true, text: "recall" } },
+        y: { min: 0, max: 1, title: { display: true, text: "precision" } } } },
+  });
+  if (defaultT != null) $("t-slider").value = defaultT.toFixed(2);
+  renderThreshold();
+}
+
 async function loadModel() {
   const m = await getJSON("/api/model");
   const entries = Object.entries(m.metrics);
@@ -271,6 +458,7 @@ async function loadModel() {
     "n_estimators": hp.n_estimators, "min_child_weight": hp.min_child_weight, "scale_pos_weight": hp.scale_pos_weight,
   };
   $("model-cfg").innerHTML = Object.entries(cfg).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+  loadEvaluation(m.alert_thresholds?.High ?? 0.5);
   const x = m.metrics.xgboost?.test;
   $("k-model").textContent = `${m.version} · test PR-AUC ${x ? x.pr_auc.toFixed(3) : "–"} · ROC-AUC ${x ? x.roc_auc.toFixed(3) : "–"}`;
 }
@@ -311,6 +499,26 @@ async function init() {
   $("prev").addEventListener("click", () => step(-1));
   $("next").addEventListener("click", () => step(1));
   $("obs").addEventListener("change", () => { restyle(); drawLegend(); });
+  [["s-tmax", "tmax"], ["s-rh", "rh"], ["s-wind", "wind"], ["s-dry", "dry"]].forEach(([id, k]) =>
+    $(id).addEventListener("input", (e) => { SIM[k] = Number(e.target.value); renderSimLabels(); queueSim(); }));
+  document.querySelectorAll(".presets .chip").forEach((b) => b.addEventListener("click", () => applyPreset(b.dataset.preset)));
+  $("t-slider").addEventListener("input", renderThreshold);
+  $("play").addEventListener("click", togglePlay);
+  $("speed").addEventListener("change", () => { if (state.playing) { stopPlay(); togglePlay(); } });
+  $("search").addEventListener("change", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const hit = state.features.find((f) => f.properties.cell_id.toLowerCase() === q) ||
+      [...state.features].sort((a, b) => b.properties.prob - a.properties.prob)
+        .find((f) => (f.properties.district || "").toLowerCase() === q);
+    if (!hit) return;
+    const id = hit.properties.cell_id;
+    const bounds = q === id.toLowerCase() ? state.layers[id].getBounds()
+      : L.featureGroup(Object.entries(state.layers).filter(([c]) =>
+        state.features.find((f) => f.properties.cell_id === c)?.properties.district?.toLowerCase() === q).map(([, l]) => l)).getBounds();
+    map.fitBounds(bounds, { maxZoom: 9, padding: [20, 20] });
+    selectCell(id);
+    e.target.value = "";
+  });
   $("color-mode").addEventListener("change", () => { restyle(); drawLegend(); renderRanking(); });
   $("alert-open").addEventListener("click", () => showTab("alerts"));
   $("b-body").addEventListener("click", (e) => {
@@ -328,10 +536,21 @@ async function init() {
   });
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "SELECT") return;
+    if (e.target.tagName === "INPUT") return;
+    if (e.key === " ") { e.preventDefault(); togglePlay(); }
     if (e.key === "ArrowLeft") step(-1);
     if (e.key === "ArrowRight") step(1);
   });
   await Promise.all([loadRisk(start), loadModel()]);
+  const names = [...new Set(state.features.map((f) => f.properties.district).filter(Boolean))].sort();
+  $("search-list").innerHTML = [...names, ...Object.keys(state.layers).sort()].map((v) => `<option value="${v}">`).join("");
+  await loadTimeline();
+  window.addEventListener("hashchange", () => {
+    const h = new URLSearchParams(location.hash.slice(1));
+    if (h.get("cell") && h.get("cell") !== state.cell) state.cell = h.get("cell");
+    if (dates.includes(h.get("date")) && h.get("date") !== state.date) loadRisk(h.get("date"));
+    else if (state.cell) selectCell(state.cell);
+  });
 }
 
 init().catch((e) => {

@@ -19,6 +19,8 @@
       <span class="sub">Wildfire hotspot forecast · Uttarakhand · 0.25° grid · 7-day horizon</span>
     </div>
     <div class="controls">
+      <input id="search" class="search" list="search-list" placeholder="Find district or cell…" aria-label="Find district or cell">
+      <datalist id="search-list"></datalist>
       <button id="prev" class="btn" title="Previous week (←)" aria-label="Previous week">‹</button>
       <label class="field"><span>WEEK OF</span><select id="date" aria-label="Forecast week"></select></label>
       <button id="next" class="btn" title="Next week (→)" aria-label="Next week">›</button>
@@ -50,6 +52,16 @@
     <div class="kpi wide"><span class="k">Model</span><span class="v" id="k-model">–</span></div>
   </section>
 
+  <section class="timeline" aria-label="Season timeline">
+    <div class="tl-controls">
+      <button id="play" class="btn-tl" title="Play / pause (space)" aria-label="Play">▶</button>
+      <select id="speed" aria-label="Playback speed">
+        <option value="1200">0.5×</option><option value="600" selected>1×</option><option value="250">2×</option>
+      </select>
+    </div>
+    <div class="tl-chart"><canvas id="tl-chart"></canvas></div>
+  </section>
+
   <main>
     <div id="map" role="application" aria-label="Risk map"></div>
     <aside id="panel">
@@ -77,6 +89,27 @@
           <div class="chart" style="height:230px"><canvas id="shap-chart"></canvas></div>
           <h3>Trailing 12 weeks</h3>
           <div class="chart" style="height:170px"><canvas id="history-chart"></canvas></div>
+          <h3>What-if scenario <span class="muted">re-scored live by the model</span></h3>
+          <div class="sim">
+            <div class="presets">
+              <button class="chip" data-preset="heat">Heatwave</button>
+              <button class="chip" data-preset="dry">60-day dry spell</button>
+              <button class="chip" data-preset="wind">Windstorm</button>
+              <button class="chip" data-preset="rain">Pre-monsoon rain</button>
+              <button class="chip ghost" data-preset="reset">Reset</button>
+            </div>
+            <label class="sl"><span>Tmax shift</span><input type="range" id="s-tmax" min="-6" max="8" step="0.5" value="0"><output id="o-tmax" class="mono">+0.0 °C</output></label>
+            <label class="sl"><span>Humidity shift</span><input type="range" id="s-rh" min="-30" max="30" step="1" value="0"><output id="o-rh" class="mono">+0 pp</output></label>
+            <label class="sl"><span>Wind factor</span><input type="range" id="s-wind" min="0.5" max="2" step="0.05" value="1"><output id="o-wind" class="mono">×1.00</output></label>
+            <label class="sl"><span>Days since rain</span><input type="range" id="s-dry" min="0" max="120" step="1" value="0"><output id="o-dry" class="mono">–</output></label>
+            <div class="sim-out">
+              <div><div class="k">Baseline</div><div class="mono v" id="sim-base">–</div></div>
+              <div class="arrow">→</div>
+              <div><div class="k">Scenario</div><div class="mono v" id="sim-new">–</div></div>
+              <div><div class="k">Change</div><div class="mono v" id="sim-delta">–</div></div>
+            </div>
+            <div class="meter"><div class="meter-base" id="m-base"></div><div class="meter-new" id="m-new"></div></div>
+          </div>
           <h3>Inputs at forecast time</h3>
           <table class="kv mono" id="cell-feats"></table>
         </div>
@@ -111,6 +144,19 @@
       <section id="tab-model" class="tab">
         <h3>Test performance <span class="muted">2024, weekly cell predictions</span></h3>
         <table class="grid-table" id="metrics"></table>
+        <h3>Threshold explorer <span class="muted">2024 test set, drag to choose a decision threshold</span></h3>
+        <div class="thr">
+          <label class="sl"><span>Threshold</span><input type="range" id="t-slider" min="0.02" max="0.98" step="0.01" value="0.5"><output id="t-val" class="mono">0.50</output></label>
+          <div class="thr-grid">
+            <table class="cm mono" aria-label="Confusion matrix">
+              <tr><th></th><th>Fire</th><th>No fire</th></tr>
+              <tr><th>Alert</th><td class="tp" id="cm-tp"></td><td class="fp" id="cm-fp"></td></tr>
+              <tr><th>No alert</th><td class="fn" id="cm-fn"></td><td class="tn" id="cm-tn"></td></tr>
+            </table>
+            <table class="kv mono" id="thr-stats"></table>
+          </div>
+          <div class="chart" style="height:170px"><canvas id="pr-chart"></canvas></div>
+        </div>
         <h3>Configuration</h3>
         <table class="kv mono" id="model-cfg"></table>
         <h3>Target</h3>

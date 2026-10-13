@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Health(BaseModel):
@@ -83,3 +83,34 @@ class ModelInfo(BaseModel):
     hyperparameters: dict[str, Any]
     metrics: dict[str, Any]
     alert_thresholds: dict[str, float] | None = None
+
+
+class TimeSeries(BaseModel):
+    dates: list[str]
+    mean_prob: list[float]
+    observed: list[int | None]
+    elevated: list[int]
+    n_cells: int
+
+
+class Evaluation(BaseModel):
+    year: int
+    prob: list[float]
+    y: list[int]
+
+
+class Scenario(BaseModel):
+    date: str
+    d_tmax: float = Field(0.0, ge=-10, le=10, description="Shift of Tmax means, deg C")
+    d_rh: float = Field(0.0, ge=-50, le=50, description="Shift of RH means, percentage points")
+    wind_mult: float = Field(1.0, ge=0, le=3, description="Multiplier on wind means")
+    days_since_rain: int | None = Field(None, ge=0, le=365)
+
+
+class SimulationResult(BaseModel):
+    cell_id: str
+    date: str
+    base_prob: float
+    prob: float
+    features: dict[str, float]
+    contributions: list[Contribution]

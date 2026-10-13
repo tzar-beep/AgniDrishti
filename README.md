@@ -77,6 +77,20 @@ and live outlooks `<status>Actual</status>`.
 > AgniDrishti is a research prototype. Its alerts are **not official warnings**; the public should
 > follow the Uttarakhand Forest Department and district administration (emergency number 112).
 
+## Web app
+
+`uvicorn agnidrishti.api.main:app` then open <http://127.0.0.1:8000>. Everything is interactive:
+
+| Feature | What you can do |
+|---|---|
+| **Risk map** | YlOrRd quintile choropleth (or colour by alert level); hover for cell, district, P and level; click for details. Basemaps: grey OSM, OpenTopoMap terrain, Esri imagery. Toggle *Observed* to outline cells where a hotspot was actually detected. |
+| **Season timeline** | Statewide mean predicted P against the share of cells that burned, for every week. Click anywhere to jump to that week; **▶ / space** plays the seasons as an animation (0.5×–2×); **← / →** step weeks. |
+| **Cell panel** | Top-5 SHAP drivers, 12-week history (P, observed fires, FWI) and the exact model inputs. |
+| **What-if simulator** | Sliders for Tmax shift, humidity shift, wind factor and days since rain, plus presets (heatwave, dry spell, windstorm, pre-monsoon rain). The model re-scores the cell live (`POST /api/cells/{id}/simulate`) and the SHAP chart switches to the scenario. |
+| **Alerts** | District bulletin with alert levels, public advice and a CAP 1.2 XML download; a banner summarises the selected week. |
+| **Threshold explorer** | Drag a decision threshold on the 2024 test set and watch the confusion matrix, precision, recall, F1 and the operating point on the PR curve update. |
+| **Search & deep links** | Type a district or cell ID to zoom to it; the URL (`#date=…&cell=…`) always reflects the view, so any state can be shared. |
+
 ## Results (2024 test set)
 
 RESULTS_TABLE
@@ -146,12 +160,24 @@ on the daily limit; rerun the same command the next day and cached years are ski
 | `GET /api/risk?date=YYYY-MM-DD` | GeoJSON FeatureCollection, properties `cell_id`, `prob`, `observed`, `level`, `district` |
 | `GET /api/cells/{cell_id}/history[?date=]` | last 12 weeks of features, labels and probabilities |
 | `GET /api/cells/{cell_id}/explain?date=` | SHAP top-5 contributions |
+| `GET /api/timeseries` | statewide weekly mean P, observed and elevated cell counts |
+| `GET /api/evaluation?year=2024` | predicted P and outcomes for one hindcast year |
+| `POST /api/cells/{cell_id}/simulate` | what-if re-scoring: `{date, d_tmax, d_rh, wind_mult, days_since_rain}` |
 | `GET /api/model` | model version, features, window, hyperparameters, metrics, alert thresholds |
 | `GET /api/alerts?date=` | district alert bulletin: level, max P, elevated cells, advice |
 | `GET /api/alerts/cap?date=` | the bulletin as CAP 1.2 XML |
 | `GET /` | the web map |
 
 Interactive docs: <http://127.0.0.1:8000/docs>.
+
+## Extending to other states
+
+Nothing is hard-wired to Uttarakhand except `STATE_NAME` and `BBOX` in `agnidrishti/config.py`;
+GADM supplies every Indian state and district. Scaling is limited by data volume: at 0.25° all of
+India is about 5,000 cells, about 65× this prototype's weather downloads (several weeks on Open-Meteo's
+free tier), and a single model would mix very different fire regimes (crop-residue burning in the
+north-west, dry deciduous forest in central India, shifting cultivation in the north-east). A
+per-region model is the better design.
 
 ## Project layout
 
