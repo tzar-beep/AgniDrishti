@@ -174,7 +174,7 @@ Interactive docs: <http://127.0.0.1:8000/docs>.
 
 Nothing is hard-wired to Uttarakhand except `STATE_NAME` and `BBOX` in `agnidrishti/config.py`;
 GADM supplies every Indian state and district. Scaling is limited by data volume: at 0.25° all of
-India is about 5,000 cells, about 65× this prototype's weather downloads (several weeks on Open-Meteo's
+India is about 5,000 cells, about 60× this prototype's weather downloads (roughly two months on Open-Meteo's
 free tier), and a single model would mix very different fire regimes (crop-residue burning in the
 north-west, dry deciduous forest in central India, shifting cultivation in the north-east). A
 per-region model is the better design.
