@@ -52,6 +52,31 @@ All raw responses are cached in `data/raw/` (gitignored), so reruns do not re-do
 9. **Serving**: FastAPI reads the precomputed predictions table (validation + test weeks); the
    model is never run per request.
 
+## Live outlook and public alerts
+
+`python -m agnidrishti.forecast` issues a forward-looking outlook for the **next Monday-to-Sunday
+week**, so the app is not limited to historical hindcasts:
+
+- **Weather inputs** come from the Open-Meteo *forecast* API: the last 92 days of analysed
+  weather plus forecast days up to the Sunday before the target week.
+- **Fire history** comes from FIRMS: the VIIRS standard-processing archive where it exists
+  (checked via the FIRMS data-availability endpoint), then `VIIRS_SNPP_NRT` near-real-time
+  detections up to today.
+- The same trained model, features and SHAP explainer are applied; results go to
+  `data/processed/forecast_*.parquet` and appear in the app as **Live outlook** weeks.
+
+**Alert levels.** Each cell-week gets *Low / Moderate / High / Very High* using probability
+cut-offs at the 50th, 75th and 90th percentiles of the model's validation-period (2022–2023)
+predictions (stored as `alert_thresholds` in `models/xgb_v1.json`). Cells are mapped to the 13
+districts (GADM level 2) and each district takes its highest cell level. The **Alerts** tab shows the
+district bulletin with plain-language public advice for each level, and
+`GET /api/alerts/cap?date=` exports it as a **CAP 1.2** (Common Alerting Protocol) XML message,
+the format used by public warning systems. Hindcast weeks are marked `<status>Exercise</status>`
+and live outlooks `<status>Actual</status>`.
+
+> AgniDrishti is a research prototype. Its alerts are **not official warnings**; the public should
+> follow the Uttarakhand Forest Department and district administration (emergency number 112).
+
 ## Results (2024 test set)
 
 RESULTS_TABLE
@@ -76,7 +101,12 @@ RESULTS_TABLE
   practices are not modelled.
 - **Calibration.** Class weighting raises probabilities; read them as relative risk unless the
   calibration plot shows otherwise.
-- **Hindcast only.** The app serves 2022–2024 hindcasts; it does not ingest live forecasts.
+- **Outlook inputs differ from training inputs.** The live outlook uses NWP forecast weather and
+  NRT fire detections, while the model was trained on ERA5 reanalysis and the standard archive;
+  forecast error and NRT/SP differences add uncertainty that the test metrics do not capture.
+  Hotspot counts for the days between the issue date and the target Monday are unknown.
+- **Alert thresholds are relative.** Levels are percentiles of 2022–2023 predictions, not
+  operationally validated danger classes.
 
 ## How to reproduce
 
@@ -97,6 +127,7 @@ Get a free FIRMS MAP_KEY at <https://firms.modaps.eosdis.nasa.gov/api/map_key/>.
 | One ingest step | `python -m agnidrishti.ingest --only weather` | (`grid`, `terrain`, `weather`, `firms`) |
 | Features + labels | `python -m agnidrishti.features` | `data/processed/dataset.parquet` |
 | Train, evaluate, explain | `python -m agnidrishti.train` | `models/xgb_v1.joblib` + `.json`, `reports/`, predictions + SHAP tables |
+| Live outlook (next week) | `python -m agnidrishti.forecast` | `data/processed/forecast_*.parquet` |
 | Web app | `uvicorn agnidrishti.api.main:app` | <http://127.0.0.1:8000> |
 | Tests | `pytest` | |
 | Lint | `ruff check .` | |
@@ -111,11 +142,13 @@ on the daily limit; rerun the same command the next day and cached years are ski
 | Endpoint | Description |
 |---|---|
 | `GET /api/health` | status, number of cells and dates |
-| `GET /api/dates` | available prediction dates (Mondays) |
-| `GET /api/risk?date=YYYY-MM-DD` | GeoJSON FeatureCollection, properties `cell_id`, `prob` |
+| `GET /api/dates` | available prediction dates (Mondays); `forecast_dates` = live-outlook weeks |
+| `GET /api/risk?date=YYYY-MM-DD` | GeoJSON FeatureCollection, properties `cell_id`, `prob`, `observed`, `level`, `district` |
 | `GET /api/cells/{cell_id}/history[?date=]` | last 12 weeks of features, labels and probabilities |
 | `GET /api/cells/{cell_id}/explain?date=` | SHAP top-5 contributions |
-| `GET /api/model` | model version, features, window, hyperparameters, metrics |
+| `GET /api/model` | model version, features, window, hyperparameters, metrics, alert thresholds |
+| `GET /api/alerts?date=` | district alert bulletin: level, max P, elevated cells, advice |
+| `GET /api/alerts/cap?date=` | the bulletin as CAP 1.2 XML |
 | `GET /` | the web map |
 
 Interactive docs: <http://127.0.0.1:8000/docs>.
@@ -123,9 +156,9 @@ Interactive docs: <http://127.0.0.1:8000/docs>.
 ## Project layout
 
 ```
-agnidrishti/   config, grid, ingest/, labels, features, train, evaluate, explain, api/
+agnidrishti/   config, grid, ingest/, labels, features, train, evaluate, explain, forecast, alerts, api/
 web/           index.html, app.js, style.css (Leaflet + Chart.js, no build step)
-tests/         leakage, labels, temporal split, API
+tests/         leakage, labels, temporal split, alerts, API
 models/        xgb_v1.joblib + xgb_v1.json (sidecar)
 reports/       metrics.json, pr_curve_test.png, calibration_test.png
 data/          raw/ and processed/ (gitignored)
