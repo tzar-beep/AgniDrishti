@@ -332,7 +332,7 @@ async function loadTimeline() {
         if (t.dates[i]) { stopPlay(); loadRisk(t.dates[i]); }
       },
       plugins: {
-        legend: { position: "right", labels: { boxWidth: 10, boxHeight: 6, font: { size: 9 } } },
+        legend: { display: window.innerWidth > 768, position: "right", labels: { boxWidth: 10, boxHeight: 6, font: { size: 9 } } },
         tooltip: { callbacks: {
           title: (it) => `Week of ${it[0].label}${fc.has(it[0].label) ? " (outlook)" : ""}`,
           label: (it) => it.datasetIndex === 0
