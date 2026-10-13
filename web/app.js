@@ -53,6 +53,17 @@ L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
 const readout = L.control({ position: "bottomleft" });
 readout.onAdd = () => L.DomUtil.create("div", "readout");
 readout.addTo(map);
+map.on("click", () => clearSelection()); // click outside the grid deselects
+
+const homeCtl = L.control({ position: "topleft" });
+homeCtl.onAdd = () => {
+  const div = L.DomUtil.create("div", "leaflet-bar");
+  div.innerHTML = '<a href="#" role="button" title="Reset view to Uttarakhand" aria-label="Reset view" class="home-btn">⤢</a>';
+  L.DomEvent.on(div, "click", (e) => { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); resetView(); });
+  return div;
+};
+homeCtl.addTo(map);
+
 map.on("mousemove", (e) => {
   readout.getContainer().textContent = `${e.latlng.lat.toFixed(3)}°N  ${e.latlng.lng.toFixed(3)}°E`;
 });
@@ -125,7 +136,11 @@ async function loadRisk(date) {
       l.bindTooltip(() => `${f.properties.cell_id} · ${f.properties.district || ""}<br>` +
         `P=${fmtP(f.properties.prob)} · ${f.properties.level || ""}` +
         (f.properties.observed ? " · ●obs" : ""), { sticky: true, direction: "top" });
-      l.on("click", () => selectCell(f.properties.cell_id));
+      l.on("click", (e) => {
+        L.DomEvent.stopPropagation(e); // keep the map's background click (deselect) from firing
+        if (f.properties.cell_id === state.cell) clearSelection();
+        else selectCell(f.properties.cell_id);
+      });
     },
   }).addTo(map);
   if (!state.fitted) {
@@ -185,6 +200,21 @@ function renderAlerts() {
   $("b-advice").innerHTML = present.map((l) =>
     `<div class="advice ${lvlClass(l)}"><b>${l}</b><p>${a.advice[l]}</p></div>`).join("");
   $("b-thr").textContent = Object.entries(a.thresholds).map(([k, v]) => `${v.toFixed(2)} ${k}`).join(" · ");
+}
+
+function clearSelection() {
+  if (!state.cell) return;
+  state.cell = null;
+  restyle();
+  renderRanking();
+  writeHash();
+  clearTimeout(state.simTimer);
+  $("cell").hidden = true;
+  $("cell-empty").hidden = false;
+}
+
+function resetView() {
+  if (state.layer) map.fitBounds(state.layer.getBounds(), { padding: [12, 12], animate: false });
 }
 
 // focus=false refreshes the cell details (e.g. on a week change) without leaving the current tab.
@@ -522,6 +552,7 @@ async function init() {
   });
   $("color-mode").addEventListener("change", () => { restyle(); drawLegend(); renderRanking(); });
   $("alert-open").addEventListener("click", () => showTab("alerts"));
+  $("cell-clear").addEventListener("click", clearSelection);
   $("b-body").addEventListener("click", (e) => {
     const tr = e.target.closest("tr");
     if (!tr) return;
@@ -536,6 +567,7 @@ async function init() {
     map.fitBounds(state.layers[tr.dataset.cell].getBounds(), { maxZoom: 9 });
   });
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") return clearSelection();
     if (e.target.tagName === "SELECT") return;
     if (e.target.tagName === "INPUT") return;
     if (e.key === " ") { e.preventDefault(); togglePlay(); }

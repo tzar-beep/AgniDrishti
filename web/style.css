@@ -92,6 +92,10 @@ li { margin-bottom: 4px; }
 .cell-head { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .id { font-size: 15px; font-weight: 500; }
 .prob { text-align: right; }
+.clear-btn { font: 500 11px var(--sans); color: var(--ink-2); background: none; border: 1px solid var(--line-2);
+  border-radius: 2px; padding: 2px 8px; margin-bottom: 4px; cursor: pointer; }
+.clear-btn:hover { border-color: var(--ink-3); color: var(--ink); }
+.home-btn { font-size: 16px; line-height: 30px !important; color: var(--ink) !important; }
 .big { font-size: 24px; font-weight: 500; line-height: 1.1; }
 
 table { border-collapse: collapse; width: 100%; }

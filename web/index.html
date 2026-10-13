@@ -73,7 +73,7 @@
       </nav>
 
       <section id="tab-cell" class="tab on">
-        <p id="cell-empty" class="muted">Select a cell on the map or in the ranking.</p>
+        <p id="cell-empty" class="muted">Select a cell on the map, in the ranking or via search. Click it again, press Esc or click outside the grid to clear.</p>
         <div id="cell" hidden>
           <div class="cell-head">
             <div>
@@ -81,6 +81,7 @@
               <div class="muted mono small" id="cell-loc"></div>
             </div>
             <div class="prob">
+              <button id="cell-clear" class="clear-btn" title="Clear selection (Esc)">✕ Clear</button>
               <div class="mono big" id="cell-prob"></div>
               <div class="muted small" id="cell-obs"></div>
             </div>
