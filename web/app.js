@@ -137,7 +137,7 @@ async function loadRisk(date) {
   renderRanking();
   writeHash();
   state.charts.tl?.update("none");
-  if (state.cell) await selectCell(state.cell);
+  if (state.cell) await selectCell(state.cell, false);
 }
 
 function renderKpis() {
@@ -187,12 +187,13 @@ function renderAlerts() {
   $("b-thr").textContent = Object.entries(a.thresholds).map(([k, v]) => `${v.toFixed(2)} ${k}`).join(" · ");
 }
 
-async function selectCell(cellId) {
+// focus=false refreshes the cell details (e.g. on a week change) without leaving the current tab.
+async function selectCell(cellId, focus = true) {
   state.cell = cellId;
   restyle();
   renderRanking();
   writeHash();
-  showTab("cell");
+  if (focus) showTab("cell");
   const [exp, hist] = await Promise.all([
     getJSON(`/api/cells/${cellId}/explain?date=${state.date}`),
     getJSON(`/api/cells/${cellId}/history?date=${state.date}`),
@@ -549,7 +550,7 @@ async function init() {
     const h = new URLSearchParams(location.hash.slice(1));
     if (h.get("cell") && h.get("cell") !== state.cell) state.cell = h.get("cell");
     if (dates.includes(h.get("date")) && h.get("date") !== state.date) loadRisk(h.get("date"));
-    else if (state.cell) selectCell(state.cell);
+    else if (state.cell) selectCell(state.cell, false);
   });
 }
 
