@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgniDrishti – Uttarakhand fire risk</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>AgniDrishti <span>weekly wildfire risk · Uttarakhand</span></h1>
+    <label>Week starting
+      <select id="date"></select>
+    </label>
+  </header>
+  <main>
+    <div id="map"></div>
+    <aside id="panel">
+      <section id="cell" hidden>
+        <button id="close" aria-label="Close cell details">×</button>
+        <h2 id="cell-title"></h2>
+        <p id="cell-prob"></p>
+        <h3>Why? Top 5 drivers (SHAP, log-odds)</h3>
+        <canvas id="shap-chart" height="200"></canvas>
+        <h3>Last 12 weeks</h3>
+        <canvas id="history-chart" height="180"></canvas>
+      </section>
+      <section id="about">
+        <h2>About this model</h2>
+        <p>Probability that a VIIRS fire hotspot (nominal/high confidence) is detected in each
+          0.25° cell during the 7 days from the selected Monday. Model: XGBoost on weather,
+          terrain and fire-history features; trained 2015–2021, validated 2022–2023,
+          tested 2024.</p>
+        <table id="metrics"></table>
+        <h3>Limitations</h3>
+        <ul>
+          <li>FIRMS detects heat, not cause: controlled burns and crop-residue fires count too.</li>
+          <li>Weather is ERA5-based at ~0.25°; local valley/ridge conditions are not resolved.</li>
+          <li>Cloud and canopy cover can hide fires, so labels miss some events.</li>
+          <li>Probabilities from a class-weighted model are not perfectly calibrated.</li>
+        </ul>
+        <p class="hint">Hover a cell for its probability; tap/click for details.</p>
+      </section>
+    </aside>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
