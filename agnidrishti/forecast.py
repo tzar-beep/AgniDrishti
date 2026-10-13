@@ -52,7 +52,8 @@ def fetch_weather(issue: date) -> pd.DataFrame:
             params = {"latitude": cell.lat, "longitude": cell.lon, "daily": ",".join(VARIABLES),
                       "past_days": PAST_DAYS, "forecast_days": 8, "timezone": "Asia/Kolkata"}
             path.write_text(http_get(FORECAST_API, params).text)
-        df = pd.DataFrame(json.loads(path.read_text())["daily"]).rename(columns={"time": "date", **VARIABLES})
+        daily = json.loads(path.read_text())["daily"]
+        df = pd.DataFrame(daily).rename(columns={"time": "date", **VARIABLES})
         df["date"] = pd.to_datetime(df["date"])
         frames.append(df.assign(cell_id=cell.cell_id))
     return pd.concat(frames, ignore_index=True)

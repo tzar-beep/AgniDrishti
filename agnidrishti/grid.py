@@ -58,7 +58,8 @@ def assign_districts(grid: gpd.GeoDataFrame, districts: gpd.GeoDataFrame) -> gpd
     joined = gpd.sjoin_nearest(pts, districts.to_crs(32644)[["NAME_2", "geometry"]])
     names = joined.drop_duplicates("cell_id").set_index("cell_id")["NAME_2"]
     # GADM writes multi-word names without spaces ("TehriGarhwal"); "Garhwal" is Pauri Garhwal.
-    names = names.str.replace(r"(?<=[a-z])(?=[A-Z])", " ", regex=True).replace("Garhwal", "Pauri Garhwal")
+    names = names.str.replace(r"(?<=[a-z])(?=[A-Z])", " ", regex=True)
+    names = names.replace("Garhwal", "Pauri Garhwal")
     return grid.assign(district=grid["cell_id"].map(names))
 
 
