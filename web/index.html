@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div class="loadbar" aria-hidden="true"></div>
   <header class="bar">
     <div class="brand">
       <span class="mark" aria-hidden="true"></span>
@@ -73,7 +74,13 @@
       </nav>
 
       <section id="tab-cell" class="tab on">
-        <p id="cell-empty" class="muted">Select a cell on the map, in the ranking or via search. Click it again, press Esc or click outside the grid to clear.</p>
+        <div id="cell-empty" class="empty">
+          <div class="empty-title">No cell selected</div>
+          <p class="muted">Pick a cell on the map, in the ranking or via search. Click it again, press Esc or
+            click outside the grid to clear.</p>
+          <h3>Highest risk this week</h3>
+          <div id="quick-picks" class="picks"></div>
+        </div>
         <div id="cell" hidden>
           <div class="cell-head">
             <div>
@@ -87,6 +94,7 @@
             </div>
           </div>
           <h3>Top-5 drivers <span class="muted">SHAP, log-odds</span></h3>
+          <p id="shap-finding" class="finding"></p>
           <div class="chart" style="height:230px"><canvas id="shap-chart"></canvas></div>
           <h3>Trailing 12 weeks</h3>
           <div class="chart" style="height:170px"><canvas id="history-chart"></canvas></div>

@@ -21,16 +21,23 @@ const $ = (id) => document.getElementById(id);
 const fmtP = (p) => (p == null ? "–" : p.toFixed(3));
 const fmtNum = (v) => (v == null ? "–" : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2));
 const label = (f) => (FEATURES[f] || [f])[0];
+let inflight = 0;
+const busy = (d) => document.body.classList.toggle("busy", (inflight += d) > 0);
 async function getJSON(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url} → HTTP ${r.status}`);
-  return r.json();
+  busy(1);
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${url} → HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    busy(-1);
+  }
 }
 
 Chart.defaults.font.family = '"IBM Plex Mono", ui-monospace, monospace';
 Chart.defaults.font.size = 10;
-Chart.defaults.color = "#4a5160";
-Chart.defaults.borderColor = "#e1e4ea";
+Chart.defaults.color = "#4b5563";
+Chart.defaults.borderColor = "#f3f4f6";
 Chart.defaults.animation = false;
 
 // ---- Map -------------------------------------------------------------------------------------
@@ -84,7 +91,7 @@ function cellStyle(f) {
   const sel = f.properties.cell_id === state.cell;
   return {
     fillColor: fillFor(f.properties), fillOpacity: 0.78,
-    color: sel ? "#0b5cff" : showObs ? "#111" : "#6b7280",
+    color: sel ? "#2563eb" : showObs ? "#111" : "#6b7280",
     weight: sel ? 3 : showObs ? 2.2 : 0.6,
   };
 }
@@ -150,6 +157,7 @@ async function loadRisk(date) {
   drawLegend();
   renderKpis();
   renderRanking();
+  renderQuickPicks();
   writeHash();
   state.charts.tl?.update("none");
   if (state.cell) await selectCell(state.cell, false);
@@ -172,6 +180,14 @@ function renderRanking() {
     `<td>${i + 1}</td><td><span class="swatch" style="background:${fillFor(r)}"></span>${r.cell_id}</td>` +
     `<td class="dist">${r.district || ""}</td><td class="r">${fmtP(r.prob)}</td>` +
     `<td class="r">${r.observed == null ? "–" : r.observed ? "●" : "·"}</td></tr>`).join("");
+}
+
+function renderQuickPicks() {
+  const top = state.features.map((f) => f.properties).sort((a, b) => b.prob - a.prob).slice(0, 5);
+  $("quick-picks").innerHTML = top.map((r) =>
+    `<button class="pick" data-cell="${r.cell_id}"><span><span class="sw" style="background:${fillFor(r)}"></span>` +
+    `<span class="pid">${r.cell_id}</span></span><span class="pd">${r.district || ""}</span>` +
+    `<span class="pp">${fmtP(r.prob)}</span></button>`).join("");
 }
 
 function renderAlerts() {
@@ -248,6 +264,13 @@ async function selectCell(cellId, focus = true) {
 }
 
 function drawShap(c, scenario = false) {
+  const up = c.filter((x) => x.contribution > 0).sort((a, b) => b.contribution - a.contribution)[0];
+  const down = c.filter((x) => x.contribution < 0).sort((a, b) => a.contribution - b.contribution)[0];
+  const fmt = (x) => `<b>${label(x.feature)}</b> (${x.contribution > 0 ? "+" : "−"}${Math.abs(x.contribution).toFixed(2)})`;
+  // State the finding in words ("Raised most by …; lowered most by …") above the bars.
+  const parts = [up && `raised most by ${fmt(up)}`, down && `lowered most by ${fmt(down)}`].filter(Boolean);
+  const text = parts.join("; ");
+  $("shap-finding").innerHTML = text ? `${scenario ? "Scenario: r" : "R"}${text.slice(1)}.` : "";
   state.charts.shap?.destroy();
   state.charts.shap = new Chart($("shap-chart"), {
     type: "bar",
@@ -255,15 +278,15 @@ function drawShap(c, scenario = false) {
       labels: c.map((x) => [label(x.feature), `= ${fmtNum(x.value)} ${(FEATURES[x.feature] || [, ""])[1]}`]),
       datasets: [{ data: c.map((x) => x.contribution), barThickness: 14,
         backgroundColor: c.map((x) => (x.contribution > 0 ? "#b91c1c" : "#1d4ed8")),
-        borderColor: scenario ? "#0b5cff" : "transparent", borderWidth: scenario ? 1.5 : 0 }],
+        borderColor: scenario ? "#2563eb" : "transparent", borderWidth: scenario ? 1.5 : 0 }],
     },
     options: {
       indexAxis: "y", maintainAspectRatio: false,
       plugins: { legend: { display: false },
-        title: { display: scenario, text: "scenario", align: "end", color: "#0b5cff", font: { size: 10 } },
+        title: { display: scenario, text: "scenario", align: "end", color: "#2563eb", font: { size: 10 } },
         tooltip: { callbacks: { label: (t) => `${t.raw > 0 ? "+" : ""}${t.raw.toFixed(3)} log-odds` } } },
       scales: { x: { title: { display: true, text: "contribution (log-odds)  − lowers · raises +" } },
-        y: { grid: { display: false }, ticks: { autoSkip: false, color: "#16181d" } } },
+        y: { grid: { display: false }, ticks: { autoSkip: false, color: "#111827" } } },
     },
   });
 }
@@ -299,10 +322,10 @@ const markerPlugin = {
     const { top, bottom } = chart.chartArea;
     const ctx = chart.ctx;
     ctx.save();
-    ctx.strokeStyle = "#0b5cff";
+    ctx.strokeStyle = "#2563eb";
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
-    ctx.fillStyle = "#0b5cff";
+    ctx.fillStyle = "#2563eb";
     ctx.font = '500 10px "IBM Plex Mono", monospace';
     ctx.textAlign = x > chart.width - 80 ? "right" : "left";
     ctx.fillText(` ${state.date} `, x, top + 9);
@@ -460,7 +483,7 @@ async function loadEvaluation(defaultT) {
     type: "scatter",
     data: { datasets: [
       { label: "PR curve (XGBoost, 2024)", data: pts, showLine: true, borderColor: "#c2410c", borderWidth: 1.5, pointRadius: 0 },
-      { label: "selected threshold", data: [], pointRadius: 6, pointBackgroundColor: "#0b5cff", borderColor: "#fff" },
+      { label: "selected threshold", data: [], pointRadius: 6, pointBackgroundColor: "#2563eb", borderColor: "#fff" },
     ] },
     options: { maintainAspectRatio: false, animation: false,
       plugins: { legend: { position: "bottom", labels: { boxWidth: 10, boxHeight: 6 } } },
@@ -553,6 +576,12 @@ async function init() {
   $("color-mode").addEventListener("change", () => { restyle(); drawLegend(); renderRanking(); });
   $("alert-open").addEventListener("click", () => showTab("alerts"));
   $("cell-clear").addEventListener("click", clearSelection);
+  $("quick-picks").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    selectCell(b.dataset.cell);
+    map.fitBounds(state.layers[b.dataset.cell].getBounds(), { maxZoom: 9 });
+  });
   $("b-body").addEventListener("click", (e) => {
     const tr = e.target.closest("tr");
     if (!tr) return;
