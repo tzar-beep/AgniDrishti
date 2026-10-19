@@ -249,3 +249,43 @@ input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
   .sl { grid-template-columns: 96px 1fr 56px; }
   .kpi { padding: 8px 12px; }
 }
+
+/* ---- Interaction layer ------------------------------------------------------------------------ */
+/* Week-to-week colour morph: cells fade to their new risk instead of hard-cutting (also makes the
+   season playback read as a continuous sweep). */
+.leaflet-interactive { transition: fill 350ms ease-out, stroke 150ms ease-out, stroke-width 150ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .leaflet-interactive, .kpi .v { transition: none !important; animation: none !important; } }
+
+.btn-text { width: auto; padding: 0 10px; font: 500 12px var(--sans); }
+.btn:active, .btn-tl:active, .chip:active, .pick:active, .clear-btn:active { transform: translateY(1px); }
+
+/* KPI value changed: a short tint so the eye catches what moved. */
+.kpi .v.flash { animation: flash 600ms ease-out; }
+@keyframes flash { from { background: #ffedd5; } to { background: transparent; } }
+
+/* Toasts: modeless feedback, bottom-centre, never block the map. */
+.toasts { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 3000; display: grid; gap: 8px;
+  width: max-content; max-width: calc(100vw - 32px); pointer-events: none; }
+.toast { display: flex; align-items: center; gap: 12px; padding: 8px 12px; font-size: 12px; color: #f9fafb; background: var(--gray-900);
+  border-radius: var(--r); box-shadow: 0 4px 6px rgba(17, 24, 39, .1), 0 10px 20px rgba(17, 24, 39, .15); pointer-events: auto;
+  animation: toast-in 200ms ease-out; border-left: 3px solid var(--gray-500); }
+.toast.success { border-left-color: #22c55e; }
+.toast.error { border-left-color: #ef4444; }
+.toast.info { border-left-color: var(--focus); }
+.toast button { font: 600 12px var(--sans); color: #fdba74; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.toast.out { opacity: 0; transform: translateY(4px); transition: opacity 200ms ease-out, transform 200ms ease-out; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Shortcut sheet */
+.help { position: fixed; inset: 0; z-index: 2500; display: grid; place-items: center; background: rgba(17, 24, 39, .45); padding: 16px; }
+.help[hidden] { display: none; }
+.help-card { width: min(440px, 100%); background: var(--surface); border-radius: var(--r); padding: 16px 20px 12px;
+  box-shadow: 0 10px 25px rgba(17, 24, 39, .2); animation: toast-in 150ms ease-out; }
+.help-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.help-head h2 { margin: 0; font: 600 14px var(--sans); }
+.keys { margin-bottom: 8px; }
+.keys td { padding: 6px 0; border-bottom: 1px solid var(--gray-100); font-size: 12px; color: var(--ink-2); }
+.keys td:first-child { width: 120px; white-space: nowrap; }
+kbd { display: inline-block; min-width: 20px; padding: 1px 6px; font: 500 11px var(--mono); text-align: center; color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: var(--r); }
+@media (max-width: 768px) { #help-btn { display: none; } }

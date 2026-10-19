@@ -91,7 +91,8 @@ and live outlooks `<status>Actual</status>`.
 | **What-if simulator** | Sliders for Tmax shift, humidity shift, wind factor and days since rain, plus presets (heatwave, dry spell, windstorm, pre-monsoon rain). The model re-scores the cell live (`POST /api/cells/{id}/simulate`) and the SHAP chart switches to the scenario. |
 | **Alerts** | District bulletin with alert levels, public advice and a CAP 1.2 XML download; a banner summarises the selected week. |
 | **Threshold explorer** | Drag a decision threshold on the 2024 test set and watch the confusion matrix, precision, recall, F1 and the operating point on the PR curve update. |
-| **Search & deep links** | Type a district or cell ID to zoom to it; the URL (`#date=…&cell=…`) always reflects the view, so any state can be shared. |
+| **Keyboard & feedback** | `?` opens a shortcut sheet: `←/→` weeks, `Home/End` first/latest week, `Space` play, `/` search, `O` observed outlines, `L` colour mode, `1–4` tabs, `C` copy link, `Esc` clear. Week changes morph cell colours instead of redrawing; changed KPIs briefly highlight; failures, empty searches and the end of playback show non-blocking toasts (errors offer Retry). |
+| **Search & deep links** | Type a district or cell ID to zoom to it; the URL (`#date=…&cell=…`) always reflects the view, and **Share** copies it. |
 
 ## Results (2024 test set)
 

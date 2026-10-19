@@ -32,9 +32,11 @@
           <option value="level">Alert level</option>
         </select>
       </label>
-      <label class="toggle" title="Outline cells where a hotspot was actually detected">
+      <label class="toggle" title="Outline cells where a hotspot was actually detected (O)">
         <input type="checkbox" id="obs"> <span>Observed</span>
       </label>
+      <button id="share" class="btn btn-text" title="Copy a link to this exact view (C)">Share</button>
+      <button id="help-btn" class="btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" aria-haspopup="dialog">?</button>
     </div>
   </header>
 
@@ -183,6 +185,30 @@
       </section>
     </aside>
   </main>
+
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+
+  <div id="help" class="help" hidden>
+    <div class="help-card" role="dialog" aria-modal="true" aria-labelledby="help-title">
+      <div class="help-head">
+        <h2 id="help-title">Keyboard shortcuts</h2>
+        <button id="help-close" class="clear-btn" aria-label="Close shortcuts">Esc</button>
+      </div>
+      <table class="keys">
+        <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Previous / next week</td></tr>
+        <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First / latest week</td></tr>
+        <tr><td><kbd>Space</kbd></td><td>Play / pause the season timeline</td></tr>
+        <tr><td><kbd>/</kbd></td><td>Search a district or cell</td></tr>
+        <tr><td><kbd>O</kbd></td><td>Toggle observed-hotspot outlines</td></tr>
+        <tr><td><kbd>L</kbd></td><td>Switch colour: quintiles ↔ alert level</td></tr>
+        <tr><td><kbd>1</kbd>–<kbd>4</kbd></td><td>Cell · Alerts · Ranking · Model tab</td></tr>
+        <tr><td><kbd>C</kbd></td><td>Copy a link to this view</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Clear the selected cell</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Show this sheet</td></tr>
+      </table>
+      <p class="muted small">Tip: click a selected cell again to deselect it; click the timeline to jump to any week.</p>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>

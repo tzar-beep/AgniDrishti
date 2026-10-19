@@ -34,6 +34,25 @@ async function getJSON(url) {
   }
 }
 
+// Modeless feedback. Same message replaces itself instead of stacking; errors can carry a Retry.
+function toast(msg, { kind = "info", action = null, ms = 3200 } = {}) {
+  const box = $("toasts");
+  [...box.children].filter((t) => t.dataset.msg === msg).forEach((t) => t.remove());
+  const t = document.createElement("div");
+  t.className = `toast ${kind}`;
+  t.dataset.msg = msg;
+  t.textContent = msg;
+  if (action) {
+    const b = document.createElement("button");
+    b.textContent = action.label;
+    b.addEventListener("click", () => { t.remove(); action.fn(); });
+    t.append(b);
+  }
+  box.append(t);
+  while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 220); }, action ? ms * 2 : ms);
+}
+
 Chart.defaults.font.family = '"IBM Plex Mono", ui-monospace, monospace';
 Chart.defaults.font.size = 10;
 Chart.defaults.color = "#4b5563";
@@ -125,8 +144,15 @@ function drawLegend() {
 async function loadRisk(date) {
   state.date = date;
   $("date").value = date;
-  const [geo, alerts] = await Promise.all([
-    getJSON(`/api/risk?date=${date}`), getJSON(`/api/alerts?date=${date}`).catch(() => null)]);
+  let geo, alerts;
+  try {
+    [geo, alerts] = await Promise.all([
+      getJSON(`/api/risk?date=${date}`), getJSON(`/api/alerts?date=${date}`).catch(() => null)]);
+  } catch (err) {
+    stopPlay();
+    toast(`Couldn't load the week of ${date}.`, { kind: "error", action: { label: "Retry", fn: () => loadRisk(date) } });
+    return;
+  }
   state.features = geo.features;
   state.isForecast = geo.is_forecast;
   state.alerts = alerts;
@@ -134,22 +160,40 @@ async function loadRisk(date) {
   $("obs").disabled = state.isForecast;
   renderAlerts();
   state.breaks = quantileBreaks(geo.features.map((f) => f.properties.prob));
-  if (state.layer) state.layer.remove();
-  state.layers = {};
-  state.layer = L.geoJSON(geo, {
-    style: cellStyle,
-    onEachFeature: (f, l) => {
-      state.layers[f.properties.cell_id] = l;
-      l.bindTooltip(() => `${f.properties.cell_id} · ${f.properties.district || ""}<br>` +
-        `P=${fmtP(f.properties.prob)} · ${f.properties.level || ""}` +
-        (f.properties.observed ? " · ●obs" : ""), { sticky: true, direction: "top" });
-      l.on("click", (e) => {
-        L.DomEvent.stopPropagation(e); // keep the map's background click (deselect) from firing
-        if (f.properties.cell_id === state.cell) clearSelection();
-        else selectCell(f.properties.cell_id);
-      });
-    },
-  }).addTo(map);
+  // Same grid as before: update properties in place so the CSS fill transition morphs the colours.
+  const sameGrid = state.layer && geo.features.length === Object.keys(state.layers).length &&
+    geo.features.every((f) => state.layers[f.properties.cell_id]);
+  if (sameGrid) {
+    geo.features.forEach((f) => { state.layers[f.properties.cell_id].feature.properties = f.properties; });
+    state.features = Object.values(state.layers).map((l) => l.feature);
+    restyle();
+    state.layers[state.cell]?.bringToFront();
+  } else {
+    if (state.layer) state.layer.remove();
+    state.layers = {};
+    state.layer = L.geoJSON(geo, {
+      style: cellStyle,
+      onEachFeature: (f, l) => {
+        state.layers[f.properties.cell_id] = l;
+        l.bindTooltip(() => `${f.properties.cell_id} · ${f.properties.district || ""}<br>` +
+          `P=${fmtP(f.properties.prob)} · ${f.properties.level || ""}` +
+          (f.properties.observed ? " · ●obs" : ""), { sticky: true, direction: "top" });
+        l.on("click", (e) => {
+          L.DomEvent.stopPropagation(e); // keep the map's background click (deselect) from firing
+          if (f.properties.cell_id === state.cell) clearSelection();
+          else selectCell(f.properties.cell_id);
+        });
+        // Hover state: dark outline on the cell under the pointer; selection stays on top.
+        l.on("mouseover", () => {
+          if (f.properties.cell_id === state.cell) return;
+          l.setStyle({ color: "#111827", weight: 2 });
+          l.bringToFront();
+          state.layers[state.cell]?.bringToFront();
+        });
+        l.on("mouseout", () => l.setStyle(cellStyle(f)));
+      },
+    }).addTo(map);
+  }
   if (!state.fitted) {
     map.fitBounds(state.layer.getBounds(), { padding: [12, 12] });
     state.fitted = true;
@@ -163,14 +207,25 @@ async function loadRisk(date) {
   if (state.cell) await selectCell(state.cell, false);
 }
 
+function setKpi(id, value) {
+  const el = $(id);
+  const v = String(value);
+  if (el.textContent === v) return;
+  el.textContent = v;
+  if (state.playing || el.dataset.ready !== "1") { el.dataset.ready = "1"; return; }
+  el.classList.remove("flash");
+  void el.offsetWidth; // restart the animation
+  el.classList.add("flash");
+  el.addEventListener("animationend", () => el.classList.remove("flash"), { once: true });
+}
 function renderKpis() {
   const p = state.features.map((f) => f.properties);
   const top = [...p].sort((a, b) => b.prob - a.prob).slice(0, 10);
-  $("k-cells").textContent = p.length;
-  $("k-mean").textContent = (p.reduce((s, x) => s + x.prob, 0) / p.length).toFixed(3);
-  $("k-high").textContent = p.filter((x) => x.prob >= 0.5).length;
-  $("k-obs").textContent = state.isForecast ? "pending" : p.filter((x) => x.observed).length;
-  $("k-hit").textContent = state.isForecast ? "pending" : `${top.filter((x) => x.observed).length}/10`;
+  setKpi("k-cells", p.length);
+  setKpi("k-mean", (p.reduce((s, x) => s + x.prob, 0) / p.length).toFixed(3));
+  setKpi("k-high", p.filter((x) => x.prob >= 0.5).length);
+  setKpi("k-obs", state.isForecast ? "pending" : p.filter((x) => x.observed).length);
+  setKpi("k-hit", state.isForecast ? "pending" : `${top.filter((x) => x.observed).length}/10`);
 }
 
 function renderRanking() {
@@ -240,10 +295,16 @@ async function selectCell(cellId, focus = true) {
   renderRanking();
   writeHash();
   if (focus) showTab("cell");
-  const [exp, hist] = await Promise.all([
-    getJSON(`/api/cells/${cellId}/explain?date=${state.date}`),
-    getJSON(`/api/cells/${cellId}/history?date=${state.date}`),
-  ]);
+  let exp, hist;
+  try {
+    [exp, hist] = await Promise.all([
+      getJSON(`/api/cells/${cellId}/explain?date=${state.date}`),
+      getJSON(`/api/cells/${cellId}/history?date=${state.date}`),
+    ]);
+  } catch (err) {
+    toast(`Couldn't load details for ${cellId}.`, { kind: "error", action: { label: "Retry", fn: () => selectCell(cellId, focus) } });
+    return;
+  }
   const props = state.features.find((f) => f.properties.cell_id === cellId)?.properties;
   const center = state.layers[cellId]?.getBounds().getCenter();
   $("cell-empty").hidden = true;
@@ -382,13 +443,17 @@ function stopPlay() {
 }
 function togglePlay() {
   if (state.playing) return stopPlay();
+  if (state.dates.indexOf(state.date) >= state.dates.length - 1) loadRisk(state.dates[0]); // loop back
   $("play").textContent = "❚❚";
   $("play").classList.add("on");
   let busy = false;
   state.playing = setInterval(async () => {
     if (busy) return;
     const i = state.dates.indexOf(state.date);
-    if (i >= state.dates.length - 1) return stopPlay();
+    if (i >= state.dates.length - 1) {
+      stopPlay();
+      return toast("Reached the latest week. Press ▶ to replay from the start.");
+    }
     busy = true;
     try { await loadRisk(state.dates[i + 1]); } finally { busy = false; }
   }, Number($("speed").value));
@@ -442,7 +507,7 @@ async function runSim() {
     days_since_rain: SIM.dry };
   const r = await fetch(`/api/cells/${state.cell}/simulate`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) return;
+  if (!r.ok) return toast("The scenario couldn't be scored. Try a smaller change.", { kind: "error" });
   const res = await r.json();
   showSim(res.base_prob, res.prob, res.contributions);
 }
@@ -522,6 +587,32 @@ function showTab(name) {
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.id === `tab-${name}`));
 }
+let helpReturn = null;
+function toggleHelp(open) {
+  $("help").hidden = !open;
+  if (open) { helpReturn = document.activeElement; $("help-close").focus(); }
+  else helpReturn?.focus?.();
+}
+async function copyLink() {
+  try {
+    try {
+      await navigator.clipboard.writeText(location.href);
+    } catch {
+      // Fallback for browsers/contexts without clipboard-API permission.
+      const ta = Object.assign(document.createElement("textarea"), { value: location.href });
+      ta.style.cssText = "position:fixed;opacity:0";
+      document.body.append(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      if (!ok) throw new Error("copy failed");
+    }
+    toast(state.cell ? `Link copied: week of ${state.date}, cell ${state.cell}.` : `Link copied: week of ${state.date}.`,
+      { kind: "success" });
+  } catch {
+    toast("Couldn't copy automatically. Copy the address bar instead.", { kind: "error" });
+  }
+}
 function step(delta) {
   const i = state.dates.indexOf(state.date) + delta;
   if (i >= 0 && i < state.dates.length) loadRisk(state.dates[i]);
@@ -564,7 +655,10 @@ async function init() {
     const hit = state.features.find((f) => f.properties.cell_id.toLowerCase() === q) ||
       [...state.features].sort((a, b) => b.properties.prob - a.properties.prob)
         .find((f) => (f.properties.district || "").toLowerCase() === q);
-    if (!hit) return;
+    if (!hit) {
+      if (q) toast(`No district or cell matches "${e.target.value.trim()}".`, { kind: "error" });
+      return;
+    }
     const id = hit.properties.cell_id;
     const bounds = q === id.toLowerCase() ? state.layers[id].getBounds()
       : L.featureGroup(Object.entries(state.layers).filter(([c]) =>
@@ -595,13 +689,35 @@ async function init() {
     selectCell(tr.dataset.cell);
     map.fitBounds(state.layers[tr.dataset.cell].getBounds(), { maxZoom: 9 });
   });
+  $("share").addEventListener("click", copyLink);
+  $("help-btn").addEventListener("click", () => toggleHelp(true));
+  $("help-close").addEventListener("click", () => toggleHelp(false));
+  $("help").addEventListener("click", (e) => { if (e.target === $("help")) toggleHelp(false); });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") return clearSelection();
-    if (e.target.tagName === "SELECT") return;
-    if (e.target.tagName === "INPUT") return;
-    if (e.key === " ") { e.preventDefault(); togglePlay(); }
-    if (e.key === "ArrowLeft") step(-1);
-    if (e.key === "ArrowRight") step(1);
+    if (e.key === "Escape") {
+      if (!$("help").hidden) return toggleHelp(false);
+      if (e.target === $("search")) return $("search").blur();
+      return clearSelection();
+    }
+    if (!$("help").hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const tabs = { 1: "cell", 2: "alerts", 3: "rank", 4: "model" };
+    if (k === " ") { e.preventDefault(); togglePlay(); }
+    else if (k === "ArrowLeft") step(-1);
+    else if (k === "ArrowRight") step(1);
+    else if (k === "Home") { e.preventDefault(); loadRisk(state.dates[0]); }
+    else if (k === "End") { e.preventDefault(); loadRisk(state.dates[state.dates.length - 1]); }
+    else if (k === "/") { e.preventDefault(); $("search").focus(); }
+    else if (k === "?") toggleHelp(true);
+    else if (k === "o" && !$("obs").disabled) { $("obs").click(); toast(`Observed outlines ${$("obs").checked ? "on" : "off"}.`); }
+    else if (k === "l") {
+      $("color-mode").value = byLevel() ? "quintile" : "level";
+      $("color-mode").dispatchEvent(new Event("change"));
+      toast(`Colouring by ${byLevel() ? "alert level" : "quintiles"}.`);
+    }
+    else if (k === "c") copyLink();
+    else if (tabs[k]) showTab(tabs[k]);
   });
   await Promise.all([loadRisk(start), loadModel()]);
   const names = [...new Set(state.features.map((f) => f.properties.district).filter(Boolean))].sort();
