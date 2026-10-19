@@ -3,6 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    // Set the theme before first paint (saved choice, else the OS preference) to avoid a flash.
+    try {
+      const t = localStorage.getItem("agni-theme") ||
+        (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = t;
+    } catch (e) { document.documentElement.dataset.theme = "light"; }
+  </script>
   <title>AgniDrishti · Fire Risk Uttarakhand</title>
   <meta name="description" content="Weekly 0.25° wildfire hotspot probability for Uttarakhand, India.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,6 +44,7 @@
         <input type="checkbox" id="obs"> <span>Observed</span>
       </label>
       <button id="share" class="btn btn-text" title="Copy a link to this exact view (C)">Share</button>
+      <button id="theme" class="btn" title="Light / dark theme (T)" aria-label="Toggle dark theme">◐</button>
       <button id="help-btn" class="btn" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" aria-haspopup="dialog">?</button>
     </div>
   </header>
@@ -48,9 +57,9 @@
 
   <section class="kpis" aria-label="Summary for selected week">
     <div class="kpi"><span class="k">Cells</span><span class="v" id="k-cells">–</span></div>
-    <div class="kpi"><span class="k">Mean P</span><span class="v" id="k-mean">–</span></div>
+    <div class="kpi"><span class="k">Mean P</span><span class="v" id="k-mean">–</span><span class="dv" id="d-mean"></span></div>
     <div class="kpi"><span class="k">P ≥ 0.5</span><span class="v" id="k-high">–</span></div>
-    <div class="kpi"><span class="k">Observed</span><span class="v" id="k-obs">–</span></div>
+    <div class="kpi"><span class="k">Observed</span><span class="v" id="k-obs">–</span><span class="dv" id="d-obs"></span></div>
     <div class="kpi"><span class="k" title="Top-10 cells by P that had an observed hotspot">Top-10 hits</span><span class="v" id="k-hit">–</span></div>
     <div class="kpi wide"><span class="k">Model</span><span class="v" id="k-model">–</span></div>
   </section>
@@ -204,6 +213,7 @@
         <tr><td><kbd>1</kbd>–<kbd>4</kbd></td><td>Cell · Alerts · Ranking · Model tab</td></tr>
         <tr><td><kbd>C</kbd></td><td>Copy a link to this view</td></tr>
         <tr><td><kbd>Esc</kbd></td><td>Clear the selected cell</td></tr>
+        <tr><td><kbd>T</kbd></td><td>Light / dark theme</td></tr>
         <tr><td><kbd>?</kbd></td><td>Show this sheet</td></tr>
       </table>
       <p class="muted small">Tip: click a selected cell again to deselect it; click the timeline to jump to any week.</p>

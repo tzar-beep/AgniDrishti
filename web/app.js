@@ -55,8 +55,13 @@ function toast(msg, { kind = "info", action = null, ms = 3200 } = {}) {
 
 Chart.defaults.font.family = '"IBM Plex Mono", ui-monospace, monospace';
 Chart.defaults.font.size = 10;
-Chart.defaults.color = "#4b5563";
-Chart.defaults.borderColor = "#f3f4f6";
+// Theme-aware chart chrome: read the CSS tokens so charts follow light/dark.
+const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function applyChartTheme() {
+  Chart.defaults.color = cssVar("--ink-2");
+  Chart.defaults.borderColor = cssVar("--line");
+}
+applyChartTheme();
 Chart.defaults.animation = false;
 
 // ---- Map -------------------------------------------------------------------------------------
@@ -110,7 +115,7 @@ function cellStyle(f) {
   const sel = f.properties.cell_id === state.cell;
   return {
     fillColor: fillFor(f.properties), fillOpacity: 0.78,
-    color: sel ? "#2563eb" : showObs ? "#111" : "#6b7280",
+    color: sel ? cssVar("--select") : showObs ? cssVar("--ink") : "#6b7280",
     weight: sel ? 3 : showObs ? 2.2 : 0.6,
   };
 }
@@ -186,7 +191,7 @@ async function loadRisk(date) {
         // Hover state: dark outline on the cell under the pointer; selection stays on top.
         l.on("mouseover", () => {
           if (f.properties.cell_id === state.cell) return;
-          l.setStyle({ color: "#111827", weight: 2 });
+          l.setStyle({ color: cssVar("--ink"), weight: 2 });
           l.bringToFront();
           state.layers[state.cell]?.bringToFront();
         });
@@ -218,6 +223,24 @@ function setKpi(id, value) {
   el.classList.add("flash");
   el.addEventListener("animationend", () => el.classList.remove("flash"), { once: true });
 }
+function renderDeltas(p) {
+  const t = state.timeline;
+  const i = t ? t.dates.indexOf(state.date) : -1;
+  const gap = i > 0 ? (new Date(t.dates[i]) - new Date(t.dates[i - 1])) / 864e5 : 0;
+  const show = (id, d, digits, unit = "") => {
+    const el = $(id);
+    if (d == null || Number.isNaN(d)) { el.textContent = ""; el.className = "dv"; return; }
+    const arrow = d > 0 ? "▲" : d < 0 ? "▼" : "■";
+    el.textContent = `${arrow} ${Math.abs(d).toFixed(digits)}${unit} vs prev wk`;
+    el.className = `dv ${d > 0 ? "up" : d < 0 ? "down" : ""}`;
+  };
+  if (i <= 0 || gap !== 7) { show("d-mean", null); show("d-obs", null); return; }
+  const mean = p.reduce((s, x) => s + x.prob, 0) / p.length;
+  show("d-mean", mean - t.mean_prob[i - 1], 3);
+  const prevObs = t.observed[i - 1];
+  show("d-obs", state.isForecast || prevObs == null ? null : p.filter((x) => x.observed).length - prevObs, 0);
+}
+
 function renderKpis() {
   const p = state.features.map((f) => f.properties);
   const top = [...p].sort((a, b) => b.prob - a.prob).slice(0, 10);
@@ -225,6 +248,7 @@ function renderKpis() {
   setKpi("k-mean", (p.reduce((s, x) => s + x.prob, 0) / p.length).toFixed(3));
   setKpi("k-high", p.filter((x) => x.prob >= 0.5).length);
   setKpi("k-obs", state.isForecast ? "pending" : p.filter((x) => x.observed).length);
+  renderDeltas(p);
   setKpi("k-hit", state.isForecast ? "pending" : `${top.filter((x) => x.observed).length}/10`);
 }
 
@@ -347,7 +371,7 @@ function drawShap(c, scenario = false) {
         title: { display: scenario, text: "scenario", align: "end", color: "#2563eb", font: { size: 10 } },
         tooltip: { callbacks: { label: (t) => `${t.raw > 0 ? "+" : ""}${t.raw.toFixed(3)} log-odds` } } },
       scales: { x: { title: { display: true, text: "contribution (log-odds)  − lowers · raises +" } },
-        y: { grid: { display: false }, ticks: { autoSkip: false, color: "#111827" } } },
+        y: { grid: { display: false }, ticks: { autoSkip: false } } },
     },
   });
 }
@@ -403,7 +427,7 @@ async function loadTimeline() {
       labels: t.dates,
       datasets: [
         { type: "bar", label: "cells with observed hotspot", data: t.observed.map((v) => (v == null ? null : v / t.n_cells)),
-          backgroundColor: "rgba(17,17,17,.18)", barPercentage: 1, categoryPercentage: 1, yAxisID: "y" },
+          backgroundColor: cssVar("--tl-bar"), barPercentage: 1, categoryPercentage: 1, yAxisID: "y" },
         { type: "line", label: "mean predicted P", data: t.mean_prob, borderColor: "#c2410c", borderWidth: 1.25,
           pointRadius: t.dates.map((d) => (fc.has(d) ? 4 : 0)), pointBackgroundColor: "#f59e0b", yAxisID: "y" },
       ],
@@ -565,7 +589,7 @@ async function loadModel() {
   const best = Math.max(...entries.map(([, s]) => s.test.pr_auc));
   $("metrics").innerHTML = "<thead><tr><th>Model</th><th class=r>PR-AUC</th><th class=r>ROC-AUC</th><th class=r>Brier</th></tr></thead><tbody>" +
     entries.map(([k, s]) => `<tr class="${s.test.pr_auc === best ? "best" : ""}"><td>${MODEL_NAMES[k] || k}</td>` +
-      `<td class=r>${s.test.pr_auc.toFixed(3)}</td><td class=r>${s.test.roc_auc.toFixed(3)}</td><td class=r>${s.test.brier.toFixed(3)}</td></tr>`).join("") +
+      `<td class="r bar-cell"><span class="ib" style="width:${(s.test.pr_auc * 60).toFixed(1)}%"></span><span>${s.test.pr_auc.toFixed(3)}</span></td><td class=r>${s.test.roc_auc.toFixed(3)}</td><td class=r>${s.test.brier.toFixed(3)}</td></tr>`).join("") +
     `</tbody>`;
   const t = entries[0][1].test;
   const hp = m.hyperparameters;
@@ -587,6 +611,18 @@ function showTab(name) {
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.id === `tab-${name}`));
 }
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("agni-theme", next); } catch { /* private mode: theme just isn't remembered */ }
+  applyChartTheme();
+  if (state.charts.tl) state.charts.tl.data.datasets[0].backgroundColor = cssVar("--tl-bar");
+  Object.values(state.charts).forEach((c) => c?.update("none"));
+  restyle();
+  state.layers[state.cell]?.bringToFront();
+  toast(`${next === "dark" ? "Dark" : "Light"} theme.`);
+}
+
 let helpReturn = null;
 function toggleHelp(open) {
   $("help").hidden = !open;
@@ -690,6 +726,7 @@ async function init() {
     map.fitBounds(state.layers[tr.dataset.cell].getBounds(), { maxZoom: 9 });
   });
   $("share").addEventListener("click", copyLink);
+  $("theme").addEventListener("click", toggleTheme);
   $("help-btn").addEventListener("click", () => toggleHelp(true));
   $("help-close").addEventListener("click", () => toggleHelp(false));
   $("help").addEventListener("click", (e) => { if (e.target === $("help")) toggleHelp(false); });
@@ -717,12 +754,14 @@ async function init() {
       toast(`Colouring by ${byLevel() ? "alert level" : "quintiles"}.`);
     }
     else if (k === "c") copyLink();
+    else if (k === "t") toggleTheme();
     else if (tabs[k]) showTab(tabs[k]);
   });
   await Promise.all([loadRisk(start), loadModel()]);
   const names = [...new Set(state.features.map((f) => f.properties.district).filter(Boolean))].sort();
   $("search-list").innerHTML = [...names, ...Object.keys(state.layers).sort()].map((v) => `<option value="${v}">`).join("");
   await loadTimeline();
+  renderKpis();
   window.addEventListener("hashchange", () => {
     const h = new URLSearchParams(location.hash.slice(1));
     if (h.get("cell") && h.get("cell") !== state.cell) state.cell = h.get("cell");

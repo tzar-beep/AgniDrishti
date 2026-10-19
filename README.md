@@ -92,6 +92,7 @@ and live outlooks `<status>Actual</status>`.
 | **Alerts** | District bulletin with alert levels, public advice and a CAP 1.2 XML download; a banner summarises the selected week. |
 | **Threshold explorer** | Drag a decision threshold on the 2024 test set and watch the confusion matrix, precision, recall, F1 and the operating point on the PR curve update. |
 | **Keyboard & feedback** | `?` opens a shortcut sheet: `←/→` weeks, `Home/End` first/latest week, `Space` play, `/` search, `O` observed outlines, `L` colour mode, `1–4` tabs, `C` copy link, `Esc` clear. Week changes morph cell colours instead of redrawing; changed KPIs briefly highlight; failures, empty searches and the end of playback show non-blocking toasts (errors offer Retry). |
+| **Themes & trends** | Light and dark themes (◐ or `T`; follows the OS setting and is remembered). KPIs show the change vs the previous week; the model table draws PR-AUC as inline bars. |
 | **Search & deep links** | Type a district or cell ID to zoom to it; the URL (`#date=…&cell=…`) always reflects the view, and **Share** copies it. |
 
 ## Results (2024 test set)
